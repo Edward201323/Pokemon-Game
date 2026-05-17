@@ -10,7 +10,7 @@ public class PlayerPokemon {
     public PlayerPokemon(GamePanel gp){
         pokemonEquipped = new ArrayList<>();
         pokemonInPC = new ArrayList<>();
-        addPokemon("Charizard", 100);
+        addPokemon("Ditto", 100);
         this.gp = gp;
     }
 
