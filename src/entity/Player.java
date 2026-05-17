@@ -1,231 +1,123 @@
 package entity;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import javax.imageio.ImageIO;
+
 import Main.GamePanel;
 import Main.KeyHandler;
 import PokemonEncounters.PlayerObjectInteraction;
-import java.awt.Graphics2D;
-import java.awt.Rectangle;
-import java.io.File;
-import java.io.IOException;
-import java.awt.image.BufferedImage;
-import javax.imageio.ImageIO;
-public class Player extends Entity{
-    GamePanel gp;
-    KeyHandler keyH;
-    PlayerObjectInteraction playerObjectInteraction;
+
+public class Player extends Entity {
+    private static final String UP = "up";
+    private static final String DOWN = "down";
+    private static final String LEFT = "left";
+    private static final String RIGHT = "right";
+    private static final String[] DIRECTIONS = {UP, DOWN, LEFT, RIGHT};
+    private static final int SPRITE_FRAMES = 3;
+
+    private final GamePanel gp;
+    private final KeyHandler keyH;
+    private final PlayerObjectInteraction playerObjectInteraction;
     public final int screenX;
     public final int screenY;
-    public Player(GamePanel gp, KeyHandler keyH){
+
+    // Indexed [direction][frame]. "top" = upper half, "bottom" = lower half.
+    private final BufferedImage[][] topSprites = new BufferedImage[4][SPRITE_FRAMES];
+    private final BufferedImage[][] bottomSprites = new BufferedImage[4][SPRITE_FRAMES];
+
+    public Player(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
 
-        screenX = gp.screenWidth/2 - (gp.tileSize/2);
-        screenY = gp.screenHeight/2 - (gp.tileSize/2);
+        screenX = gp.screenWidth / 2 - (gp.tileSize / 2);
+        screenY = gp.screenHeight / 2 - (gp.tileSize / 2);
 
-        //character collision area
-        solidArea = new Rectangle();
-        solidArea.x = 16;
-        solidArea.y = 8;
+        solidArea = new Rectangle(16, 8, 16, 10);
         solidAreaDefaultX = solidArea.x;
         solidAreaDefaultY = solidArea.y;
-        solidArea.width = 16;
-        solidArea.height = 10;
 
         playerObjectInteraction = new PlayerObjectInteraction(gp);
 
         setDefaultValues();
-        getPlayerImage();
+        loadPlayerImages();
     }
 
-    public void setDefaultValues(){
-        //where the character starts on the map(ex: worldX = gp.tileSize(x value), worldY = gp.tileSize(y value))
-        worldX = gp.tileSize*10;
-        worldY = gp.tileSize*93;
-        speed = 10; //player speed
-        direction = "down";
+    private void setDefaultValues() {
+        worldX = gp.tileSize * 10;
+        worldY = gp.tileSize * 93;
+        speed = 10;
+        direction = DOWN;
     }
-    
-    public void getPlayerImage(){
-        try{
-            playerDown1 = ImageIO.read(new File("./src/res/player/player_down_1.png"));
-            playerDown2 = ImageIO.read(new File("./src/res/player/player_down_2.png"));
-            playerDown3 = ImageIO.read(new File("./src/res/player/player_down_3.png"));
 
-            playerLeft1 = ImageIO.read(new File("./src/res/player/player_left_1.png"));
-            playerLeft2 = ImageIO.read(new File("./src/res/player/player_left_2.png"));
-            playerLeft3 = ImageIO.read(new File("./src/res/player/player_left_3.png"));
+    private void loadPlayerImages() {
+        for (int d = 0; d < DIRECTIONS.length; d++) {
+            for (int f = 0; f < SPRITE_FRAMES; f++) {
+                topSprites[d][f] = readImage("player_" + DIRECTIONS[d] + "_" + (f + 1) + ".png");
+                bottomSprites[d][f] = readImage("!player_" + DIRECTIONS[d] + "_" + (f + 1) + ".png");
+            }
+        }
+    }
 
-            playerRight1 = ImageIO.read(new File("./src/res/player/player_right_1.png"));
-            playerRight2 = ImageIO.read(new File("./src/res/player/player_right_2.png"));
-            playerRight3 = ImageIO.read(new File("./src/res/player/player_right_3.png"));
-
-            playerUp1 = ImageIO.read(new File("./src/res/player/player_up_1.png"));
-            playerUp2 = ImageIO.read(new File("./src/res/player/player_up_2.png"));
-            playerUp3 = ImageIO.read(new File("./src/res/player/player_up_3.png"));
-
-            
-            dplayerDown1 = ImageIO.read(new File("./src/res/player/!player_down_1.png"));
-            dplayerDown2 = ImageIO.read(new File("./src/res/player/!player_down_2.png"));
-            dplayerDown3 = ImageIO.read(new File("./src/res/player/!player_down_3.png"));
-
-            dplayerLeft1 = ImageIO.read(new File("./src/res/player/!player_left_1.png"));
-            dplayerLeft2 = ImageIO.read(new File("./src/res/player/!player_left_2.png"));
-            dplayerLeft3 = ImageIO.read(new File("./src/res/player/!player_left_3.png"));
-
-            dplayerRight1 = ImageIO.read(new File("./src/res/player/!player_right_1.png"));
-            dplayerRight2 = ImageIO.read(new File("./src/res/player/!player_right_2.png"));
-            dplayerRight3 = ImageIO.read(new File("./src/res/player/!player_right_3.png"));
-
-            dplayerUp1 = ImageIO.read(new File("./src/res/player/!player_up_1.png"));
-            dplayerUp2 = ImageIO.read(new File("./src/res/player/!player_up_2.png"));
-            dplayerUp3 = ImageIO.read(new File("./src/res/player/!player_up_3.png"));
-
-        }catch(IOException e){
+    private BufferedImage readImage(String name) {
+        try {
+            return ImageIO.read(new File("./src/res/player/" + name));
+        } catch (IOException e) {
             e.printStackTrace();
+            return null;
         }
     }
 
-    public void update(){
-        if(keyH.upPressed == true || keyH.downPressed == true || keyH.leftPressed == true || keyH.rightPressed == true){
-             if(keyH.upPressed == true){
-                 direction = "up";
-             }
-             else if(keyH.downPressed == true){
-                 direction = "down";
-             }
-             else if(keyH.leftPressed == true){
-                 direction = "left";
-             }
-             else if(keyH.rightPressed == true){
-                 direction = "right";
-             }
-             
-             // check tile collision
-             collisionOn = false;
-             gp.cChecker.checkTile(this);
-             
-             //Check Object Collision
-             int objIndex = gp.cChecker.checkObject(this, true);
-             playerObjectInteraction.objectInteraction(objIndex);
+    public void update() {
+        if (!(keyH.upPressed || keyH.downPressed || keyH.leftPressed || keyH.rightPressed)) {
+            return;
+        }
+        if (keyH.upPressed) direction = UP;
+        else if (keyH.downPressed) direction = DOWN;
+        else if (keyH.leftPressed) direction = LEFT;
+        else if (keyH.rightPressed) direction = RIGHT;
 
-             //If collision is false, player can move
-             if(collisionOn == false){
-                if (direction.equals("up")) {
-                    worldY -= speed;
-                } else if (direction.equals("down")) {
-                    worldY += speed;
-                } else if (direction.equals("left")) {
-                    worldX -= speed;
-                } else if (direction.equals("right")) {
-                    worldX += speed;
-                }
-                
-             }
+        collisionOn = false;
+        gp.cChecker.checkTile(this);
 
-             spriteCounter++;
-             if(spriteCounter>12){
-                 if(spriteNum == 1){
-                     spriteNum = 2;
-                 }
-                 else if(spriteNum == 2){
-                     spriteNum = 3;
-                 }
-                 else if(spriteNum == 3){
-                    spriteNum = 1;
-                 }
-                 spriteCounter = 0;
-             }
+        int objIndex = gp.cChecker.checkObject(this, true);
+        playerObjectInteraction.objectInteraction(objIndex);
+
+        if (!collisionOn) {
+            switch (direction) {
+                case UP:    worldY -= speed; break;
+                case DOWN:  worldY += speed; break;
+                case LEFT:  worldX -= speed; break;
+                case RIGHT: worldX += speed; break;
+            }
+        }
+
+        spriteCounter++;
+        if (spriteCounter > 12) {
+            spriteNum = spriteNum % SPRITE_FRAMES + 1;
+            spriteCounter = 0;
         }
     }
 
-    public void drawPlayerHalf(Graphics2D g2, boolean drawTop){
-        BufferedImage image = null;
-        if (direction == "up") {
-            if (spriteNum == 1) {
-                if (drawTop == true) {
-                    image = playerUp1;
-                } else {
-                    image = dplayerUp1;
-                }
-            } else if (spriteNum == 2) {
-                if (drawTop == true) {
-                    image = playerUp2;
-                } else {
-                    image = dplayerUp2;
-                }
-            } else if (spriteNum == 3) {
-                if (drawTop == true) {
-                    image = playerUp3;
-                } else {
-                    image = dplayerUp3;
-                }
-            }
-        } else if (direction == "down") {
-            if (spriteNum == 1) {
-                if (drawTop == true) {
-                    image = playerDown1;
-                } else {
-                    image = dplayerDown1;
-                }
-            } else if (spriteNum == 2) {
-                if (drawTop == true) {
-                    image = playerDown2;
-                } else {
-                    image = dplayerDown2;
-                }
-            } else if (spriteNum == 3) {
-                if (drawTop == true) {
-                    image = playerDown3;
-                } else {
-                    image = dplayerDown3;
-                }
-            }
-        } else if (direction == "left") {
-            if (spriteNum == 1) {
-                if (drawTop == true) {
-                    image = playerLeft1;
-                } else {
-                    image = dplayerLeft1;
-                }
-            } else if (spriteNum == 2) {
-                if (drawTop == true) {
-                    image = playerLeft2;
-                } else {
-                    image = dplayerLeft2;
-                }
-            } else if (spriteNum == 3) {
-                if (drawTop == true) {
-                    image = playerLeft3;
-                } else {
-                    image = dplayerLeft3;
-                }
-            }
-        } else if (direction == "right") {
-            if (spriteNum == 1) {
-                if (drawTop == true) {
-                    image = playerRight1;
-                } else {
-                    image = dplayerRight1;
-                }
-            } else if (spriteNum == 2) {
-                if (drawTop == true) {
-                    image = playerRight2;
-                } else {
-                    image = dplayerRight2;
-                }
-            } else if (spriteNum == 3) {
-                if (drawTop == true) {
-                    image = playerRight3;
-                } else {
-                    image = dplayerRight3;
-                }
-            }
+    public void drawPlayerHalf(Graphics2D g2, boolean drawTop) {
+        int d = directionIndex(direction);
+        int frame = Math.max(0, Math.min(SPRITE_FRAMES - 1, spriteNum - 1));
+        BufferedImage image = drawTop ? topSprites[d][frame] : bottomSprites[d][frame];
+
+        if (drawTop) {
+            int newTileSize = (int) (gp.tileSize / 1.5);
+            g2.drawImage(image, screenX, screenY - 16, gp.tileSize, newTileSize, null);
+        } else {
+            g2.drawImage(image, screenX, screenY + 16, gp.tileSize, gp.tileSize / 3, null);
         }
-        
-        if(drawTop == true){
-            int newTileSize = (int) (gp.tileSize / 1.5);  // calculate new tile size by dividing by 1.5
-            g2.drawImage(image, screenX, screenY-16, gp.tileSize, newTileSize, null);        
-        }else{
-            g2.drawImage(image, screenX, screenY+16, gp.tileSize, gp.tileSize/3, null); 
+    }
+
+    private static int directionIndex(String dir) {
+        for (int i = 0; i < DIRECTIONS.length; i++) {
+            if (DIRECTIONS[i].equals(dir)) return i;
         }
+        return 1; // default DOWN
     }
 }

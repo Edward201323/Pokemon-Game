@@ -1,50 +1,40 @@
 package Pokemon;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import javax.imageio.ImageIO;
-import Main.GamePanel;
+
 public class GetPokemonImages {
-    GamePanel gp;
-    public GetPokemonImages(GamePanel gp){
-        this.gp = gp;
-    }
-    
-    public BufferedImage getPokemonBack(Pokemon pokemon){
-        File directory = new File("./src/res/PokemonBackImages");
-        File[] files = directory.listFiles();
-        for(File file: files){
-            String fileName = file.getName();
-            BufferedImage pokemonImage;
-            if(pokemon.NameInFile.equals(fileName)){
-                try {
-                    pokemonImage = ImageIO.read(new File("./src/res/PokemonBackImages/"+fileName));
-                    return pokemonImage;
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return null;
-    }
- 
- 
- 
-    public BufferedImage getPokemonFront(Pokemon pokemon) {
-        File directory = new File("./src/res/PokemonFrontImages");
-        File[] files = directory.listFiles();
-        for(File file: files){
-            String fileName = file.getName();
-            BufferedImage pokemonImage;
-            if(gp.wildPokemon.NameInFile.equals(fileName)){
-                try {
-                    pokemonImage = ImageIO.read(new File("./src/res/PokemonFrontImages/"+fileName));
-                    return pokemonImage;
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return null;
+    private static final Map<String, BufferedImage> FRONT = loadDir("./src/res/PokemonFrontImages");
+    private static final Map<String, BufferedImage> BACK = loadDir("./src/res/PokemonBackImages");
+
+    public GetPokemonImages() {
     }
 
+    private static Map<String, BufferedImage> loadDir(String path) {
+        Map<String, BufferedImage> map = new HashMap<>();
+        File dir = new File(path);
+        File[] files = dir.listFiles();
+        if (files == null) return map;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.startsWith(".") || !name.toLowerCase().endsWith(".png")) continue;
+            try {
+                map.put(name, ImageIO.read(file));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return map;
+    }
+
+    public BufferedImage getPokemonBack(Pokemon pokemon) {
+        return pokemon == null ? null : BACK.get(pokemon.NameInFile);
+    }
+
+    public BufferedImage getPokemonFront(Pokemon pokemon) {
+        return pokemon == null ? null : FRONT.get(pokemon.NameInFile);
+    }
 }

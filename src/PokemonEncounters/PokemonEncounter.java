@@ -43,7 +43,7 @@ public class PokemonEncounter {
         this.gp = gp;
         this.keyH = keyH;
         this.animations = new Animations(this.gp);
-        this.getPokemonImages = new GetPokemonImages(this.gp);
+        this.getPokemonImages = new GetPokemonImages();
  
         getFont();
  
@@ -52,8 +52,6 @@ public class PokemonEncounter {
  
         this.encounterAssets = new BufferedImage[15];
         getEncounterAssets();
- 
-        draw(g2);
     }
  
  
@@ -355,42 +353,42 @@ public class PokemonEncounter {
  
     private void getFont() {
         try {
-            MaruMonica = Font.createFont(Font.TRUETYPE_FONT, new File("./src/res/Font/MaruMonica.ttf"));
-            MaruMonicaSmall = Font.createFont(Font.TRUETYPE_FONT, new File("./src/res/Font/MaruMonica.ttf"));
- 
+            Font base = Font.createFont(Font.TRUETYPE_FONT, new File("./src/res/Font/MaruMonica.ttf"));
+            MaruMonica = base.deriveFont(Font.BOLD, 35f);
+            MaruMonicaSmall = base.deriveFont(Font.BOLD, 30f);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        MaruMonica = MaruMonica.deriveFont(Font.BOLD, 35f);
-        MaruMonicaSmall = MaruMonica.deriveFont(Font.BOLD, 30f);
     }
 
  
     private void getEncounterBackgrounds(){
-        File directory = new File("./src/res/EncounterBackgrounds");
-        File[] files = directory.listFiles();
-        for(File file: files){
-            String fileName = file.getName();
-            String[] parts = fileName.split("_");
-            int fileIndex = Integer.parseInt(parts[0]);
-            try {
-                encounterBackgrounds[fileIndex] = ImageIO.read(new File("./src/res/EncounterBackgrounds/"+fileName));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        loadIndexedImages("./src/res/EncounterBackgrounds", encounterBackgrounds);
     }
- 
- 
+
     private void getEncounterAssets(){
-        File directory = new File("./src/res/EncounterAssets");
+        loadIndexedImages("./src/res/EncounterAssets", encounterAssets);
+    }
+
+    // Loads files named "<index>_<label>.png" into the given slot array.
+    public static void loadIndexedImages(String dirPath, BufferedImage[] dest) {
+        File directory = new File(dirPath);
         File[] files = directory.listFiles();
-        for(File file: files){
+        if (files == null) return;
+        for (File file : files) {
             String fileName = file.getName();
-            String[] parts = fileName.split("_");
-            int fileIndex = Integer.parseInt(parts[0]);
+            if (fileName.startsWith(".")) continue;
+            int underscore = fileName.indexOf('_');
+            if (underscore < 0) continue;
+            int index;
             try {
-                encounterAssets[fileIndex] = ImageIO.read(new File("./src/res/EncounterAssets/"+fileName));
+                index = Integer.parseInt(fileName.substring(0, underscore));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (index < 0 || index >= dest.length) continue;
+            try {
+                dest[index] = ImageIO.read(file);
             } catch (IOException e) {
                 e.printStackTrace();
             }

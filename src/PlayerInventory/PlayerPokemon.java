@@ -1,34 +1,37 @@
 package PlayerInventory;
+import java.util.ArrayList;
+
 import Main.GamePanel;
 import Pokemon.GetPokemon;
 import Pokemon.Pokemon;
-import java.util.ArrayList;
+
 public class PlayerPokemon {
-    public ArrayList<Pokemon> pokemonEquipped;
-    public ArrayList<Pokemon> pokemonInPC;
-    GamePanel gp;
-    public PlayerPokemon(GamePanel gp){
-        pokemonEquipped = new ArrayList<>();
-        pokemonInPC = new ArrayList<>();
-        addPokemon("Ditto", 100);
+    private static final int PARTY_LIMIT = 6;
+
+    public final ArrayList<Pokemon> pokemonEquipped = new ArrayList<>();
+    public final ArrayList<Pokemon> pokemonInPC = new ArrayList<>();
+    private final GamePanel gp;
+    private final GetPokemon getPokemon = new GetPokemon();
+
+    public PlayerPokemon(GamePanel gp) {
         this.gp = gp;
+        addPokemon("Ditto", 100);
     }
 
-    public void addPokemon(String pokemonName, int level){
-        GetPokemon getPokemon = new GetPokemon();
-        if(pokemonEquipped.size()<6){
-            pokemonEquipped.add(getPokemon.findPokemon(pokemonName, level));
-        } else {
-            pokemonInPC.add(getPokemon.findPokemon(pokemonName, level));
-        }
+    public void addPokemon(String pokemonName, int level) {
+        addToInventory(getPokemon.findPokemon(pokemonName, level));
     }
 
-    public void addPokemonCaught(){
-        if(pokemonEquipped.size()<6){
-            
-            pokemonEquipped.add(gp.wildPokemon);
+    public void addPokemonCaught() {
+        addToInventory(gp.wildPokemon);
+    }
+
+    private void addToInventory(Pokemon pokemon) {
+        if (pokemon == null) return;
+        if (pokemonEquipped.size() < PARTY_LIMIT) {
+            pokemonEquipped.add(pokemon);
         } else {
-            pokemonInPC.add(gp.wildPokemon);
+            pokemonInPC.add(pokemon);
         }
     }
 }

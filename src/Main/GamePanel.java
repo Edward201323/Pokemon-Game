@@ -126,21 +126,8 @@ public class GamePanel extends JPanel implements Runnable{
         if(gameState == playState){
             player.update();
         }
-        if(gameState == pokemonEncounter){
-
-        }
-        if(gameState == pokemonTransition){
-
-        }
-        if(gameState == beforePokemonEncounter){
-            
-        }
-        if(gameState == InventoryBagState){
-
-        }
-        if(gameState == InventoryPokemonState){
-            
-        }
+        // Other states (encounter/transition/inventory) currently have no per-frame logic;
+        // their visuals are driven by counters inside their draw() methods.
     }
 
     @Override
@@ -153,11 +140,9 @@ public class GamePanel extends JPanel implements Runnable{
         //Draws player bottom half
         player.drawPlayerHalf(g2, false);
 
-        //Draws object
-        for(int i = 0; i < obj.size(); i++){ //forloop scans through the SuperObject array and draws
-            if(obj.get(i) != null){
-                obj.get(i).draw(g2, this);
-            }
+        //Draws objects (entries can be null after pickup, e.g. Pokeballs)
+        for(SuperObject o : obj){
+            if(o != null) o.draw(g2, this);
         }
 
         //Draws player top half

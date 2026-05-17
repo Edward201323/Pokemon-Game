@@ -1,74 +1,44 @@
 package PlayerInventory;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-
-import javax.imageio.ImageIO;
 
 import Main.GamePanel;
 import Main.KeyHandler;
+import PokemonEncounters.PokemonEncounter;
+
 public class OpenPlayerInventory {
-    GamePanel gp;
-    KeyHandler keyH;
-    Graphics2D g2;
+    private final GamePanel gp;
+    private final KeyHandler keyH;
+    private final BufferedImage[] inventoryAssets = new BufferedImage[3];
 
-    BufferedImage[] inventoryAssets;
-
-    int countA = 0;
-    public OpenPlayerInventory(GamePanel gp, KeyHandler keyH){
+    public OpenPlayerInventory(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
-        this.inventoryAssets = new BufferedImage[3];
-
-        getInventoryAssets();
-        draw(g2);
+        PokemonEncounter.loadIndexedImages("./src/res/PlayerInventoryAssets", inventoryAssets);
     }
 
-    public void draw(Graphics2D g2){
-        this.g2 = g2;
+    public void draw(Graphics2D g2) {
         openInventory();
-        // closeInventory();
-        if(gp.gameState == gp.InventoryPokemonState){
-            drawInventoryPokemon();
+        if (gp.gameState == gp.InventoryPokemonState) {
+            drawInventoryPokemon(g2);
         }
-        if(gp.gameState == gp.InventoryBagState){
-            drawInventoryBag();
-        }
-    }
-
-    private void openInventory(){
-        if(gp.gameState == gp.playState){
-            if(keyH.pPressed == true){
-                gp.gameState = gp.InventoryPokemonState;
-            }
-            if(keyH.iPressed == true){
-                gp.gameState = gp.InventoryBagState;
-            }
+        if (gp.gameState == gp.InventoryBagState) {
+            drawInventoryBag(g2);
         }
     }
 
-
-    private void drawInventoryPokemon(){
-
-    }
-
-    private void drawInventoryBag(){
-
-    }
-
-    private void getInventoryAssets(){
-        File directory = new File("./src/res/PlayerInventoryAssets");
-        File[] files = directory.listFiles();
-        for(File file: files){
-            String fileName = file.getName();
-            String[] parts = fileName.split("_");
-            int fileIndex = Integer.parseInt(parts[0]);
-            try {
-                inventoryAssets[fileIndex] = ImageIO.read(new File("./src/res/PlayerInventoryAssets/"+fileName));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    private void openInventory() {
+        if (gp.gameState == gp.playState) {
+            if (keyH.pPressed) gp.gameState = gp.InventoryPokemonState;
+            if (keyH.iPressed) gp.gameState = gp.InventoryBagState;
         }
+    }
+
+    private void drawInventoryPokemon(Graphics2D g2) {
+        // TODO: pokemon inventory screen
+    }
+
+    private void drawInventoryBag(Graphics2D g2) {
+        // TODO: bag inventory screen
     }
 }
