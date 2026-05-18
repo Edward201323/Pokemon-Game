@@ -3,9 +3,12 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Random;
+import javax.imageio.ImageIO;
 
 import Main.GamePanel;
 import Main.KeyHandler;
@@ -25,7 +28,18 @@ public class BattleSystem {
     private static final int POST_FAINT_HOLD = 10;      // pause after sink before FINISHED
     private static final double BAR_DRAIN_FULL_FRAMES = 90.0; // a full bar drains in ~1.5s
 
-    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, FAINT_ANIM, FINISHED }
+    // Catch animation
+    private static final int CATCH_THROW_FRAMES = 30;   // ball arcs from player toward enemy
+    private static final int CATCH_SHAKE_FRAMES = 28;   // one full left-right wiggle
+    private static final int CATCH_NO_SHAKE_HOLD = 30;  // pause when the ball breaks immediately
+    private static final int BALL_START_X = 200;
+    private static final int BALL_START_Y = 380;
+    private static final int BALL_END_X = 647;          // centered on the enemy sprite at (600,150,175,175)
+    private static final int BALL_END_Y = 197;
+    private static final int BALL_SIZE = 80;
+    private static final int BALL_ARC_HEIGHT = 140;
+
+    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, FAINT_ANIM, CATCH_THROW, CATCH_SHAKE, FINISHED }
 
     private final GamePanel gp;
     private final KeyHandler keyH;
@@ -58,9 +72,25 @@ public class BattleSystem {
     // -1 = no damage in current message. Otherwise the messageFrame at which damage hit.
     private int damageAppliedFrame = -1;
 
+    // Catch state. ballOnEnemy keeps the ball drawn (and the enemy sprite hidden) across the
+    // shake phase and the result message until either the encounter ends or the ball breaks.
+    private final BufferedImage pokeballImg;
+    private int catchFrame;
+    private int catchShakeCount;
+    private int catchShakesNeeded;
+    private boolean catchSuccess;
+    private boolean ballOnEnemy;
+
     public BattleSystem(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
+        BufferedImage ball = null;
+        try {
+            ball = ImageIO.read(new File("./src/res/objects/pokeball.png"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        this.pokeballImg = ball;
     }
 
     public void start() {
@@ -75,6 +105,11 @@ public class BattleSystem {
         pendingDamageTarget = null;
         pendingDamage = 0;
         damageAppliedFrame = -1;
+        catchFrame = 0;
+        catchShakeCount = 0;
+        catchShakesNeeded = 0;
+        catchSuccess = false;
+        ballOnEnemy = false;
         // Seed prev* with current state so a key already held when the battle
         // begins must be released and re-pressed before it registers.
         prevZ = keyH.zPressed;
@@ -87,6 +122,10 @@ public class BattleSystem {
 
     public boolean isFinished() { return phase == Phase.FINISHED; }
     public boolean playerWon()  { return enemy().currentHP <= 0 && player().currentHP > 0; }
+
+    // True while a thrown pokeball is sitting on the enemy (shake + result message). The
+    // encounter uses this to suppress the enemy sprite so the ball isn't drawn over top of it.
+    public boolean enemyHiddenByBall() { return ballOnEnemy; }
 
     // 0 = upright, 1 = fully sunk. Used by PokemonEncounter to translate+clip the sprite.
     public double enemyFaintFraction() {
@@ -135,6 +174,29 @@ public class BattleSystem {
             // FAINT_FRAMES of sink, then POST_FAINT_HOLD of just sitting on the fainted line
             // before we hand control back to PokemonEncounter for the fade.
             if (faintFrame >= FAINT_FRAMES + POST_FAINT_HOLD) phase = Phase.FINISHED;
+            return;
+        }
+        if (phase == Phase.CATCH_THROW) {
+            catchFrame++;
+            if (catchFrame >= CATCH_THROW_FRAMES) {
+                phase = Phase.CATCH_SHAKE;
+                catchFrame = 0;
+                ballOnEnemy = true;
+            }
+            return;
+        }
+        if (phase == Phase.CATCH_SHAKE) {
+            catchFrame++;
+            // 0 shakes = ball pops open instantly; hold briefly so the player sees it land first.
+            if (catchShakesNeeded == 0) {
+                if (catchFrame >= CATCH_NO_SHAKE_HOLD) resolveCatch();
+                return;
+            }
+            if (catchFrame >= CATCH_SHAKE_FRAMES) {
+                catchShakeCount++;
+                catchFrame = 0;
+                if (catchShakeCount >= catchShakesNeeded) resolveCatch();
+            }
             return;
         }
         if (phase == Phase.CHOOSE_ACTION) handleActionInput();
@@ -201,9 +263,35 @@ public class BattleSystem {
 
     private void handleActionInput() {
         if (justZ)      phase = Phase.CHOOSE_MOVE;                     // Fight
-        else if (justX) queue("Your bag is empty for now...",      () -> phase = Phase.CHOOSE_ACTION);
+        else if (justX) startCatch();                                  // Catch (was Bag)
         else if (justC) queue("You don't have another Pokemon!",   () -> phase = Phase.CHOOSE_ACTION);
         else if (justV) queue("You got away safely!",              () -> phase = Phase.FINISHED);
+    }
+
+    // Decide the catch outcome up front, then play the animation that's consistent with it
+    // (a successful catch always shows 3 shakes + click; a failure shakes 0–3 times then breaks).
+    private void startCatch() {
+        phase = Phase.CATCH_THROW;
+        catchFrame = 0;
+        catchShakeCount = 0;
+        ballOnEnemy = false;
+        Pokemon e = enemy();
+        double maxHp = Math.max(1, e.maxHP);
+        double hpFactor = (3.0 * maxHp - 2.0 * e.currentHP) / (3.0 * maxHp); // 1/3 at full HP, 1 at 0 HP
+        double chance = Math.max(0.05, Math.min(0.95, hpFactor * 0.85));
+        catchSuccess = RNG.nextDouble() < chance;
+        catchShakesNeeded = catchSuccess ? 3 : RNG.nextInt(4);
+    }
+
+    private void resolveCatch() {
+        if (catchSuccess) {
+            queue("Gotcha! " + enemy().name + " was caught!", () -> phase = Phase.FINISHED);
+        } else {
+            queue("Aw! It broke free!", () -> {
+                ballOnEnemy = false;
+                phase = Phase.CHOOSE_ACTION;
+            });
+        }
     }
 
     private void handleMoveInput() {
@@ -355,6 +443,8 @@ public class BattleSystem {
         drawHpFill(g2, displayedPlayerHP, player().maxHP, 609, 391, 171, 9);
         drawPlayerHpText(g2, smallFont);
 
+        if (shouldDrawCatchBall()) drawCatchBall(g2);
+
         if (phase == Phase.CHOOSE_ACTION) {
             drawActionMenu(g2, encounterAssets, bigFont);
         } else if (phase == Phase.CHOOSE_MOVE) {
@@ -363,6 +453,32 @@ public class BattleSystem {
                    && !currentMessage.isEmpty()) {
             drawDialog(g2, currentMessage, bigFont);
         }
+    }
+
+    private boolean shouldDrawCatchBall() {
+        if (phase == Phase.CATCH_THROW || phase == Phase.CATCH_SHAKE) return true;
+        // During the "Gotcha!" / "broke free!" message the ball stays put until the callback fires.
+        return phase == Phase.MESSAGE && ballOnEnemy;
+    }
+
+    private void drawCatchBall(Graphics2D g2) {
+        if (pokeballImg == null) return;
+        int x, y;
+        if (phase == Phase.CATCH_THROW) {
+            double t = catchFrame / (double) CATCH_THROW_FRAMES;
+            x = (int) Math.round(BALL_START_X + (BALL_END_X - BALL_START_X) * t);
+            // Parabolic arc peaking at t=0.5, pulling the midpoint BALL_ARC_HEIGHT pixels up.
+            double arc = -BALL_ARC_HEIGHT * (4.0 * t * (1.0 - t));
+            y = (int) Math.round(BALL_START_Y + (BALL_END_Y - BALL_START_Y) * t + arc);
+        } else if (phase == Phase.CATCH_SHAKE && catchShakesNeeded > 0) {
+            double s = (catchFrame / (double) CATCH_SHAKE_FRAMES) * Math.PI * 2.0;
+            x = BALL_END_X + (int) Math.round(Math.sin(s) * 10);
+            y = BALL_END_Y;
+        } else {
+            x = BALL_END_X;
+            y = BALL_END_Y;
+        }
+        g2.drawImage(pokeballImg, x, y, BALL_SIZE, BALL_SIZE, null);
     }
 
     private void drawHpFill(Graphics2D g2, double current, int max, int x, int y, int w, int h) {
@@ -390,19 +506,23 @@ public class BattleSystem {
         g2.drawImage(assets[1], 500, 497, 364, 175, null);
         Pokemon p = player();
 
-        // FIGHT/BAG/POK&MON/RUN labels are baked into 1_FBPR.png; only overlay the key cues.
+        // "What will X do?" prompt on the left dialog half.
         g2.setFont(font);
         g2.setColor(Color.black);
         g2.drawString("What will " + p.name, 40, gp.screenHeight - 110);
         g2.drawString("do?", 40, gp.screenHeight - 70);
-        g2.drawString("(Z)", 643, gp.screenHeight - 99);
-        g2.drawString("(X)", 780, gp.screenHeight - 99);
-        g2.drawString("(C)", 678, gp.screenHeight - 38);
-        g2.drawString("(V)", 780, gp.screenHeight - 38);
-
         g2.setColor(Color.white);
         g2.drawString("What will " + p.name, 38, gp.screenHeight - 112);
         g2.drawString("do?", 38, gp.screenHeight - 72);
+
+        // Key cues placed to the right of each baked label in 1_FBPR.png. The label baselines
+        // sit at y=582 (top row) and y=636 (bottom row) when the asset is drawn at 500,497,364,175.
+        g2.setFont(font.deriveFont(Font.BOLD, 22f));
+        g2.setColor(new Color(200, 40, 40));
+        g2.drawString("(Z)", 625, 582);   // after FIGHT
+        g2.drawString("(X)", 815, 582);   // after CATCH
+        g2.drawString("(C)", 632, 636);   // after POKéMON
+        g2.drawString("(V)", 780, 636);   // after RUN
     }
 
     private void drawMoveMenu(Graphics2D g2, BufferedImage[] assets, Font font) {

@@ -227,8 +227,11 @@ public class PokemonEncounter {
         //background
         g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight-175, null);
 
-        drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
-                          600, 150, 175, 175, battle.enemyFaintFraction());
+        // Skip the enemy sprite once a thrown pokeball is sitting on it, so the ball isn't drawn over the pokemon.
+        if (!battle.enemyHiddenByBall()) {
+            drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
+                              600, 150, 175, 175, battle.enemyFaintFraction());
+        }
         drawPokemonSprite(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)),
                           25, 235, 325, 325, battle.playerFaintFraction());
 
