@@ -415,15 +415,19 @@ public class BattleSystem {
         return catchSuccess ? 3 : Math.min(shakeCount, 3);
     }
 
-    // Gen 5+ catch formula with a plain Poke Ball (ballBonus = 1, no status bonus).
-    //   a = ((3*HPmax - 2*HPcur) * captureRate) / (3*HPmax)
+    // Ultra Ball bonus from Gen 1 onward.
+    private static final double ULTRA_BALL_BONUS = 2.0;
+
+    // Gen 5+ catch formula. HP scaling is built into the (3*HPmax - 2*HPcur) term, so a
+    // weakened pokemon is easier to catch. No status conditions in this game, so statusBonus = 1.
+    //   a = ((3*HPmax - 2*HPcur) * captureRate * ballBonus) / (3*HPmax)
     //   b = 65536 / (255/a)^(3/16)
-    // Then roll four 16-bit ints; each one under b is a successful "shake". 4 = caught.
+    // Then roll four 16-bit ints; each one under b is a successful "shake". 4 in a row = caught.
     private int rollCatch(Pokemon e) {
         int hpMax = Math.max(1, e.maxHP);
         int hpCur = Math.max(1, e.currentHP);
         int cr = Math.max(1, e.captureRate);
-        double a = ((3.0 * hpMax - 2.0 * hpCur) * cr) / (3.0 * hpMax);
+        double a = ((3.0 * hpMax - 2.0 * hpCur) * cr * ULTRA_BALL_BONUS) / (3.0 * hpMax);
         if (a >= 255) return 4;
         if (a < 1) a = 1;
         double b = 65536.0 / Math.pow(255.0 / a, 3.0 / 16.0);
