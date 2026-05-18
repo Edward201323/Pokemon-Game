@@ -38,13 +38,21 @@ public class BattleSystem {
     private static final int WOBBLE_FRAMES = 38;
     private static final int POST_WOBBLE_HOLD = 18;
     // Where the ball ends up on the enemy and where it starts (lower-left, off-trainer).
-    private static final int BALL_START_X = 140, BALL_START_Y = 580;
-    private static final int BALL_LAND_X  = 685, BALL_LAND_Y  = 235;
+    // Land coordinates match the enemy sprite footprint (see PokemonEncounter.ENEMY_*).
+    private static final int BALL_START_X = 140, BALL_START_Y = 600;
+    private static final int BALL_LAND_X  = 690, BALL_LAND_Y  = 195;
     private static final int BALL_DRAW_SIZE = 56;
     private static final double THROW_ARC_HEIGHT = 240.0;
     private static final double WOBBLE_MAX_TILT = 0.40; // radians (~23 degrees)
 
-    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, BALL_THROW, FAINT_ANIM, FINISHED }
+    // Switch-throw animation: reuses the trainer poses (encounterAssets 10..13) so the
+    // player visually throws a ball when sending the new pokemon out, matching the
+    // initial-encounter send-out.
+    private static final int SWITCH_POSE_FRAMES = 14;
+    private static final int SWITCH_POSE_COUNT = 4;
+    private static final int SWITCH_TOTAL_FRAMES = SWITCH_POSE_FRAMES * SWITCH_POSE_COUNT;
+
+    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, BALL_THROW, SWITCH_THROW, FAINT_ANIM, FINISHED }
 
     private final GamePanel gp;
     private final KeyHandler keyH;
@@ -53,8 +61,8 @@ public class BattleSystem {
 
     // Edge-detection: a key only counts as "just pressed" on the frame it goes
     // from up to down. Without this, holding Z to fight would auto-select move 1.
-    private boolean prevZ, prevX, prevC, prevV;
-    private boolean justZ, justX, justC, justV;
+    private boolean prevZ, prevX, prevC, prevV, prevEsc;
+    private boolean justZ, justX, justC, justV, justEsc;
 
     // Animated HP-bar values that ease toward each Pokemon's currentHP.
     private double displayedPlayerHP;
@@ -93,6 +101,8 @@ public class BattleSystem {
     // recall/throw animation reads as "the previous pokemon goes back, then the new one
     // emerges" without a hard cut between sprites mid-message.
     private boolean switchHidden;
+    private int switchFrame;
+    private Runnable afterSwitchThrow;
 
     public BattleSystem(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
@@ -125,6 +135,8 @@ public class BattleSystem {
         shakeCount = 0;
         postCatchEnemyMove = null;
         switchHidden = false;
+        switchFrame = 0;
+        afterSwitchThrow = null;
         // Initial send-out: skip any fainted lead so we never put a 0-HP pokemon on the field.
         int firstLive = firstLiveIndex();
         if (firstLive < 0) {
@@ -141,6 +153,7 @@ public class BattleSystem {
         prevX = keyH.xPressed;
         prevC = keyH.cPressed;
         prevV = keyH.vPressed;
+        prevEsc = keyH.escPressed;
         displayedPlayerHP = player().currentHP;
         displayedEnemyHP = enemy().currentHP;
     }
@@ -245,6 +258,15 @@ public class BattleSystem {
             }
             return;
         }
+        if (phase == Phase.SWITCH_THROW) {
+            switchFrame++;
+            if (switchFrame >= SWITCH_TOTAL_FRAMES) {
+                Runnable r = afterSwitchThrow;
+                afterSwitchThrow = null;
+                if (r != null) r.run();
+            }
+            return;
+        }
         if (phase == Phase.BALL_THROW) {
             throwFrame++;
             if (throwFrame == THROW_FLY_FRAMES) {
@@ -276,10 +298,12 @@ public class BattleSystem {
         justX = keyH.xPressed && !prevX;
         justC = keyH.cPressed && !prevC;
         justV = keyH.vPressed && !prevV;
+        justEsc = keyH.escPressed && !prevEsc;
         prevZ = keyH.zPressed;
         prevX = keyH.xPressed;
         prevC = keyH.cPressed;
         prevV = keyH.vPressed;
+        prevEsc = keyH.escPressed;
     }
 
     private void easeHpBars() {
@@ -360,27 +384,40 @@ public class BattleSystem {
         activeIndex = newIndex;
         Pokemon nw = player();
         displayedPlayerHP = nw.currentHP;
-        // Player sprite stays hidden through the switch dialog; cleared right before the
-        // new pokemon is "on the field" so we don't flash the previous sprite or hard-cut.
+        // Player sprite stays hidden during the recall + trainer throw; we flip it back on
+        // when the trainer animation finishes so the new pokemon emerges on the field.
         switchHidden = true;
+        Runnable revealNew = forced
+            ? () -> {
+                  switchHidden = false;
+                  queue("Go! " + nw.name + "!", () -> phase = Phase.CHOOSE_ACTION);
+              }
+            : () -> {
+                  switchHidden = false;
+                  queue("Go! " + nw.name + "!", () -> {
+                      doEnemyAttack(enemyMove);
+                      then(this::afterEnemyAttack);
+                  });
+              };
         if (forced) {
-            // Forced switch (post-faint): no "Come back" — the previous pokemon already
-            // dropped during FAINT_ANIM. Just throw the new one out.
-            queue("Go! " + nw.name + "!", () -> {
-                switchHidden = false;
-                phase = Phase.CHOOSE_ACTION;
-            });
+            // Forced switch (post-faint): the previous pokemon already dropped during
+            // FAINT_ANIM, so go straight into the trainer-throw animation.
+            startSwitchThrow(revealNew);
         } else {
-            queue("Come back, " + old.name + "!", null);
-            queue("Go! " + nw.name + "!", () -> {
-                switchHidden = false;
-                doEnemyAttack(enemyMove);
-                then(this::afterEnemyAttack);
-            });
+            queue("Come back, " + old.name + "!", () -> startSwitchThrow(revealNew));
         }
     }
 
+    private void startSwitchThrow(Runnable after) {
+        phase = Phase.SWITCH_THROW;
+        switchFrame = 0;
+        afterSwitchThrow = after;
+    }
+
     private void handleMoveInput() {
+        // Escape backs out of move selection — un-commits the FIGHT choice, returns to
+        // the action menu (FIGHT / CATCH / POKEMON / RUN).
+        if (justEsc) { phase = Phase.CHOOSE_ACTION; return; }
         Move chosen = null;
         if      (justZ) chosen = moveAt(0);
         else if (justX) chosen = moveAt(1);
@@ -616,6 +653,17 @@ public class BattleSystem {
                    && !currentMessage.isEmpty()) {
             drawDialogPanel(g2, currentMessage, bigFont, gp.screenWidth, gp.screenHeight);
         }
+        // Switch throw: trainer poses (encounterAssets 10..13) at the player area while
+        // the active pokemon is hidden. After the animation the new pokemon emerges.
+        if (phase == Phase.SWITCH_THROW) {
+            int pose = Math.min(SWITCH_POSE_COUNT - 1, switchFrame / SWITCH_POSE_FRAMES);
+            int assetIdx = 10 + pose;
+            if (assetIdx < encounterAssets.length && encounterAssets[assetIdx] != null) {
+                g2.drawImage(encounterAssets[assetIdx],
+                             PokemonEncounter.TRAINER_X, PokemonEncounter.TRAINER_Y,
+                             PokemonEncounter.TRAINER_W, PokemonEncounter.TRAINER_H, null);
+            }
+        }
         // The ball overlays everything else (incl. the dialog box on "Gotcha!") whenever it's in play.
         drawBall(g2);
     }
@@ -698,43 +746,119 @@ public class BattleSystem {
     }
 
 
+    // Custom action menu: same dark panel style as the dialog, with the prompt on the left
+    // and a 2x2 grid of action buttons (FIGHT/CATCH/POKEMON/RUN) on the right.
     private void drawActionMenu(Graphics2D g2, BufferedImage[] assets, Font font) {
-        g2.drawImage(assets[1], 500, 497, 364, 175, null);
+        int panelH = 150;
+        int margin = 16;
+        int x = margin;
+        int y = gp.screenHeight - panelH - 8;
+        int w = gp.screenWidth - margin * 2;
+
+        // Panel background — matches drawDialogPanel.
+        g2.setPaint(new GradientPaint(0, y, new Color(18, 28, 40, 235),
+                                      0, y + panelH, new Color(8, 14, 22, 235)));
+        g2.fillRoundRect(x, y, w, panelH, 22, 22);
+        Stroke prevStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(90, 130, 170, 200));
+        g2.drawRoundRect(x, y, w, panelH, 22, 22);
+        g2.setColor(new Color(140, 180, 220, 70));
+        g2.drawRoundRect(x + 3, y + 3, w - 6, panelH - 6, 18, 18);
+
+        // Prompt on the left half.
         Pokemon p = player();
-
-        // FIGHT/BAG/POK&MON/RUN and the Z/X/C/V key cues are baked into 1_FBPR.png.
         g2.setFont(font);
-        g2.setColor(Color.black);
-        g2.drawString("What will " + p.name, 40, gp.screenHeight - 110);
-        g2.drawString("do?", 40, gp.screenHeight - 70);
+        g2.setColor(new Color(245, 250, 255));
+        g2.drawString("What will", x + 32, y + 56);
+        g2.drawString(p.name + " do?", x + 32, y + 102);
 
-        g2.setColor(Color.white);
-        g2.drawString("What will " + p.name, 38, gp.screenHeight - 112);
-        g2.drawString("do?", 38, gp.screenHeight - 72);
+        // 2x2 button grid on the right half.
+        String[][] labels = {
+            { "FIGHT (Z)",   "CATCH (X)" },
+            { "POKEMON (C)", "RUN (V)" },
+        };
+        int gridX = x + w / 2 + 8;
+        int gridY = y + 18;
+        int gridW = (x + w) - gridX - 18;
+        int gridH = panelH - 36;
+        int gap = 10;
+        int cellW = (gridW - gap) / 2;
+        int cellH = (gridH - gap) / 2;
+        g2.setStroke(new BasicStroke(1.5f));
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 2; col++) {
+                int bx = gridX + col * (cellW + gap);
+                int by = gridY + row * (cellH + gap);
+                g2.setColor(new Color(40, 60, 90, 210));
+                g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
+                g2.setColor(new Color(110, 150, 190, 230));
+                g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
+                String label = labels[row][col];
+                int textW = g2.getFontMetrics().stringWidth(label);
+                int tx = bx + (cellW - textW) / 2;
+                int ty = by + cellH / 2 + 10;
+                g2.setColor(Color.white);
+                g2.drawString(label, tx, ty);
+            }
+        }
+        g2.setStroke(prevStroke);
     }
 
+    // Custom move menu: dark panel, 2x2 grid of move buttons, "ESC to go back" hint.
     private void drawMoveMenu(Graphics2D g2, BufferedImage[] assets, Font font) {
-        // 2_ChooseMove.png is 240x47 with 4 move cells on the left and a PP/TYPE sidebar on the right.
-        // Draw it across the full bottom dialog area so its aspect is preserved.
-        int barY = gp.screenHeight - 175;
-        if (assets[2] != null) {
-            g2.drawImage(assets[2], 0, barY, gp.screenWidth, 175, null);
-        }
+        int panelH = 150;
+        int margin = 16;
+        int x = margin;
+        int y = gp.screenHeight - panelH - 8;
+        int w = gp.screenWidth - margin * 2;
 
+        // Panel background — same style as action/dialog panels.
+        g2.setPaint(new GradientPaint(0, y, new Color(18, 28, 40, 235),
+                                      0, y + panelH, new Color(8, 14, 22, 235)));
+        g2.fillRoundRect(x, y, w, panelH, 22, 22);
+        Stroke prevStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(90, 130, 170, 200));
+        g2.drawRoundRect(x, y, w, panelH, 22, 22);
+        g2.setColor(new Color(140, 180, 220, 70));
+        g2.drawRoundRect(x + 3, y + 3, w - 6, panelH - 6, 18, 18);
+
+        // 2x2 grid of move buttons across the panel (leave a small strip for the back hint).
         java.util.List<Move> moves = player().moves;
-        String[] labels = { "Z", "X", "C", "V" };
-        // Cell baselines tuned to the asset's 4-quadrant layout (left ~80% of width).
-        int[] xs = { 40, 360, 40, 360 };
-        int[] ys = { barY + 67, barY + 67, barY + 141, barY + 141 };
-
+        String[] keys = { "Z", "X", "C", "V" };
+        int gridX = x + 24;
+        int gridY = y + 18;
+        int gridW = w - 48;
+        int gridH = panelH - 50; // reserve ~32px for hint strip
+        int gap = 10;
+        int cellW = (gridW - gap) / 2;
+        int cellH = (gridH - gap) / 2;
         g2.setFont(font);
         for (int i = 0; i < 4; i++) {
-            String text = (moves != null && i < moves.size())
-                ? labels[i] + " " + moves.get(i).name
-                : labels[i] + " -";
-            g2.setColor(new Color(40, 40, 40));
-            g2.drawString(text, xs[i], ys[i]);
+            int col = i % 2;
+            int row = i / 2;
+            int bx = gridX + col * (cellW + gap);
+            int by = gridY + row * (cellH + gap);
+            boolean has = moves != null && i < moves.size() && moves.get(i) != null;
+            g2.setColor(new Color(40, 60, 90, has ? 210 : 130));
+            g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.setColor(new Color(110, 150, 190, has ? 230 : 140));
+            g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
+            String label = has ? (keys[i] + "   " + moves.get(i).name) : (keys[i] + "   —");
+            int textW = g2.getFontMetrics().stringWidth(label);
+            int tx = bx + (cellW - textW) / 2;
+            int ty = by + cellH / 2 + 10;
+            g2.setColor(has ? Color.white : new Color(160, 170, 180));
+            g2.drawString(label, tx, ty);
         }
+        // Hint strip
+        g2.setColor(new Color(180, 195, 210));
+        String hint = "ESC to go back";
+        int hintW = g2.getFontMetrics().stringWidth(hint);
+        g2.drawString(hint, x + w - hintW - 24, y + panelH - 14);
+        g2.setStroke(prevStroke);
     }
 
     // Draw the pokeball in whatever state matches the current throwFrame: parabolic arc while

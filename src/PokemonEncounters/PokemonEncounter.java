@@ -12,6 +12,13 @@ import Main.KeyHandler;
 import Pokemon.GetPokemonImages;
 import Pokemon.Pokemon;
 public class PokemonEncounter {
+    // Shared positions for the battle arena, sized for the full-screen background.
+    // Player pokemon sits lower-left, enemy upper-right, trainer overlaps the player's
+    // spot (so the throw animation lines up with where the new pokemon emerges).
+    public static final int PLAYER_X = 25,  PLAYER_Y = 250, PLAYER_W = 360, PLAYER_H = 360;
+    public static final int ENEMY_X  = 575, ENEMY_Y  = 180,  ENEMY_W  = 230, ENEMY_H  = 230;
+    public static final int TRAINER_X = 70, TRAINER_Y = 270, TRAINER_W = 260, TRAINER_H = 260;
+
     GamePanel gp;
     KeyHandler keyH;
  
@@ -110,12 +117,14 @@ public class PokemonEncounter {
  
  
     public void drawBeforePokemonEncounter(){
-        //background
-        g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight-175, null);
- 
+        // Full-screen background so the arena isn't squashed into the top 497px — the
+        // custom dialog panel draws over the bottom area cleanly without needing space reserved.
+        g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight, null);
+
         //Enemy Pokemon
-        g2.drawImage(getPokemonImages.getPokemonFront(gp.wildPokemon), 600, 150, 175, 175, null);
- 
+        g2.drawImage(getPokemonImages.getPokemonFront(gp.wildPokemon),
+                     ENEMY_X, ENEMY_Y, ENEMY_W, ENEMY_H, null);
+
         drawBeforeEncounterAssets();
     }
  
@@ -125,7 +134,7 @@ public class PokemonEncounter {
 
         if(ballThrown == false){
             //Draw Dawn
-            g2.drawImage(encounterAssets[9],75,298, 200, 200, null);
+            g2.drawImage(encounterAssets[9], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
         }
 
         // Custom enemy HP panel — same look the battle uses, just driven with the wild's
@@ -158,15 +167,16 @@ public class PokemonEncounter {
         counterC++;
         if(counterA<=11){
             if(animationFrame == 1){
-                g2.drawImage(encounterAssets[10],75,298, 200, 200, null);
+                g2.drawImage(encounterAssets[10], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
             } else if (animationFrame == 2){
-                g2.drawImage(encounterAssets[11],75,298, 200, 200, null);
+                g2.drawImage(encounterAssets[11], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
             } else if (animationFrame == 3){
-                g2.drawImage(encounterAssets[12],75,298, 200, 200, null);
+                g2.drawImage(encounterAssets[12], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
             } else if (animationFrame == 4){
-                g2.drawImage(encounterAssets[13],75,298, 200, 200, null);
+                g2.drawImage(encounterAssets[13], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
             } else if (animationFrame == 5){
-                g2.drawImage(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)), 25, 235, 325, 325, null);
+                g2.drawImage(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)),
+                             PLAYER_X, PLAYER_Y, PLAYER_W, PLAYER_H, null);
             }
         }
         if(counterA>=11){
@@ -200,32 +210,24 @@ public class PokemonEncounter {
  
  
     private void drawPokemonEncounter(){
-        //background
-        g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight-175, null);
+        // Full-screen background so the arena uses the whole viewport — the custom dialog
+        // and HP panels draw on top with their own translucent backgrounds.
+        g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight, null);
 
         // Skip the enemy sprite once a thrown ball is sitting on it, so the ball reads as containing the wild Pokemon.
         if (!battle.enemyHiddenByBall()) {
             drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
-                              600, 150, 175, 175, battle.enemyFaintFraction());
+                              ENEMY_X, ENEMY_Y, ENEMY_W, ENEMY_H, battle.enemyFaintFraction());
         }
         // Draw whichever party member is actually active (not always slot 0), and skip the
         // sprite during a switch so the recall/throw dialog doesn't show the old pokemon.
         Pokemon active = battle.activePokemon();
         if (active != null && !battle.playerHiddenForSwitch()) {
             drawPokemonSprite(getPokemonImages.getPokemonBack(active),
-                              25, 235, 325, 325, battle.playerFaintFraction());
+                              PLAYER_X, PLAYER_Y, PLAYER_W, PLAYER_H, battle.playerFaintFraction());
         }
 
         drawEncounterAssets();
-    }
-
-    // Draw the level in a smaller font than the name so 3-digit values (Lv 100) still fit
-    // at the natural left anchor without spilling out of the HP bar.
-    private void drawLevel(int level, int leftX, int y){
-        Font prev = g2.getFont();
-        g2.setFont(prev.deriveFont(prev.getStyle(), 24f));
-        g2.drawString(Integer.toString(level), leftX, y);
-        g2.setFont(prev);
     }
 
     // While a Pokemon is fainting, translate it downward by `fraction * height` and clip to its
@@ -245,14 +247,9 @@ public class PokemonEncounter {
  
     private void drawEncounterAssets() {
         counterA++;
-        // HP panels and dialog box are now custom-drawn by BattleSystem — keeps the
-        // active pokemon's name/level/HP in sync (instead of always slot-0) and avoids
-        // the old image sidebar.
-
-        // Action menu slide-in (still your asset since you redesigned it).
-        if(counterA*71 < 497){
-            g2.drawImage(encounterAssets[1], 500, counterA*71, 364, 175,  null);
-        } else {
+        // HP panels, dialog, and action menu are all custom-drawn by BattleSystem now.
+        // counterA still gates EncounterText so the brief pre-battle pause is preserved.
+        if (counterA * 71 >= 497) {
             EncounterText();
         }
     }

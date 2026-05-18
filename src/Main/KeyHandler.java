@@ -5,8 +5,9 @@ import java.awt.event.KeyListener;
 public class KeyHandler implements KeyListener {
     public boolean upPressed, downPressed, leftPressed, rightPressed;
     public boolean zPressed, xPressed, cPressed, vPressed, iPressed, pPressed;
-    // Enter is the primary "confirm" key in menus; X (and Escape) are "cancel".
+    // Enter is the primary "confirm"; Escape is the universal "cancel / back".
     public boolean enterPressed;
+    public boolean escPressed;
 
     @Override
     public void keyTyped(KeyEvent e) {
@@ -42,8 +43,10 @@ public class KeyHandler implements KeyListener {
                 break;
             case KeyEvent.VK_Z: zPressed = pressed; break;
             case KeyEvent.VK_X: xPressed = pressed; break;
-            // Escape is an alias for X so menus can be backed out with either key.
-            case KeyEvent.VK_ESCAPE: xPressed = pressed; break;
+            // Escape is its own key — used as universal "back / cancel" in menus.
+            // (Not aliased to X, so it can mean "go back" in the move menu without also
+            // triggering whatever X does there.)
+            case KeyEvent.VK_ESCAPE: escPressed = pressed; break;
             case KeyEvent.VK_C: cPressed = pressed; break;
             case KeyEvent.VK_V: vPressed = pressed; break;
             case KeyEvent.VK_P: pPressed = pressed; break;
