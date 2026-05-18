@@ -340,30 +340,32 @@ public class PokemonEncounter {
  
  
     private void endEncounter(){
-        gp.gameState = gp.playState;
         gp.stopMusic();
         gp.resumeMusic(3);
- 
+
         resetPokemonEquippedStats();
- 
- 
+
+
         //Reset variables
         ballThrown = false;
         endEncounter = false;
         chooseAction = false;
         battleStarted = false;
 
-        // Heal the party between encounters so the next battle starts fresh.
-        for(Pokemon p : gp.playerPokemon.pokemonEquipped){
-            p.currentHP = p.maxHP;
-        }
-
         counterA = 0;
         counterB = 0;
         counterC = 0;
- 
+
         animations.counterA = 0;
         animations.counterB = 0;
+
+        // Blackout if every party member fainted; otherwise return to play. Healing now
+        // happens at the Pokemon Center (or implicitly via the blackout teleport).
+        if (gp.playerPokemon.isAllFainted()) {
+            gp.blackout.trigger();
+        } else {
+            gp.gameState = gp.playState;
+        }
     }
  
  

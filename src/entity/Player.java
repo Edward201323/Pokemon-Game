@@ -23,6 +23,10 @@ public class Player extends Entity {
     private final PlayerObjectInteraction playerObjectInteraction;
     public final int screenX;
     public final int screenY;
+    // Track adjacency to the Pokemon Center tile so we only open the menu on entry, not
+    // every frame while standing there.
+    private boolean wasAdjacentToCenter;
+    private static final int POKEMON_CENTER_TILE = 193;
 
     // Indexed [direction][frame]. "top" = upper half, "bottom" = lower half.
     private final BufferedImage[][] topSprites = new BufferedImage[4][SPRITE_FRAMES];
@@ -99,6 +103,28 @@ public class Player extends Entity {
             spriteNum = spriteNum % SPRITE_FRAMES + 1;
             spriteCounter = 0;
         }
+
+        // Open the Pokemon Center on the frame the player steps from a non-adjacent tile
+        // into a tile that's directly above/below/left/right of tile 193.
+        boolean adj = isAdjacentToCenter();
+        if (adj && !wasAdjacentToCenter && gp.gameState == gp.playState) {
+            gp.pokemonCenter.open();
+        }
+        wasAdjacentToCenter = adj;
+    }
+
+    private boolean isAdjacentToCenter() {
+        int col = (worldX + solidArea.x + solidArea.width  / 2) / gp.tileSize;
+        int row = (worldY + solidArea.y + solidArea.height / 2) / gp.tileSize;
+        return tileEquals(col - 1, row, POKEMON_CENTER_TILE)
+            || tileEquals(col + 1, row, POKEMON_CENTER_TILE)
+            || tileEquals(col, row - 1, POKEMON_CENTER_TILE)
+            || tileEquals(col, row + 1, POKEMON_CENTER_TILE);
+    }
+
+    private boolean tileEquals(int col, int row, int tileNum) {
+        if (col < 0 || col >= gp.maxWorldCol || row < 0 || row >= gp.maxWorldRow) return false;
+        return gp.tileM.mapTileNum[col][row] == tileNum;
     }
 
     public void drawPlayerHalf(Graphics2D g2, boolean drawTop) {

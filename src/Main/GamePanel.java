@@ -33,7 +33,7 @@ public class GamePanel extends JPanel implements Runnable{
     int FPS = 60;
 
     //System
-    TileManager tileM = new TileManager(this); //Tiles
+    public TileManager tileM = new TileManager(this); //Tiles
 
     KeyHandler keyH = new KeyHandler(); //Player movement
 
@@ -47,6 +47,9 @@ public class GamePanel extends JPanel implements Runnable{
     public PokemonEncounter encounter = new PokemonEncounter(this, keyH);
 
     public OpenPlayerInventory openPlayerInventory = new OpenPlayerInventory(this, keyH);
+
+    public PokemonCenter.PokemonCenter pokemonCenter = new PokemonCenter.PokemonCenter(this, keyH);
+    public PokemonCenter.Blackout blackout = new PokemonCenter.Blackout(this);
 
     public Pokemon wildPokemon;
 
@@ -67,6 +70,9 @@ public class GamePanel extends JPanel implements Runnable{
     public final int beforePokemonEncounter = 4;
     public final int InventoryPokemonState = 5;
     public final int InventoryBagState = 6;
+    public final int pokemonCenterState = 7; // intro dialog, menu, heal animation, outro
+    public final int pcViewState = 8;        // PC pokemon viewer (sub-state of the center)
+    public final int blackoutState = 9;      // wipe-out fade-out + dialog + teleport + fade-in
 
     public GamePanel(){
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
@@ -125,6 +131,10 @@ public class GamePanel extends JPanel implements Runnable{
     public void update(){
         if(gameState == playState){
             player.update();
+        } else if (gameState == pokemonCenterState || gameState == pcViewState) {
+            pokemonCenter.update();
+        } else if (gameState == blackoutState) {
+            blackout.update();
         }
         // Other states (encounter/transition/inventory) currently have no per-frame logic;
         // their visuals are driven by counters inside their draw() methods.
@@ -151,7 +161,10 @@ public class GamePanel extends JPanel implements Runnable{
         openPlayerInventory.draw(g2);
 
         encounter.draw(g2);
-        
+
+        // Center + blackout draw last so their overlays sit above the world / encounter.
+        pokemonCenter.draw(g2);
+        blackout.draw(g2);
 
         g2.dispose();
     }
