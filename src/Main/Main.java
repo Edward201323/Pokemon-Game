@@ -12,9 +12,12 @@ class Main {
         window.add(gamePanel);
         window.pack();
         window.setLocationRelativeTo(null);
-        window.setVisible(true);
 
+        // setupGame() populates gp.obj; the EDT iterates that list in paintComponent.
+        // Finish populating before the window becomes visible so the first paint can't
+        // race with obj.add() and throw ConcurrentModificationException.
         gamePanel.setupGame();
+        window.setVisible(true);
         gamePanel.startGameThread();
     }
 }

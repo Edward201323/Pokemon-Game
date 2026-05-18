@@ -2,12 +2,14 @@ package PokemonEncounters;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Random;
+
 import javax.imageio.ImageIO;
 
 import Main.GamePanel;
@@ -26,20 +28,20 @@ public class BattleSystem {
     private static final int POST_DAMAGE_HOLD = 30;     // additional hold after the bar settles
     private static final int FAINT_FRAMES = 60;         // sink-into-ground duration
     private static final int POST_FAINT_HOLD = 10;      // pause after sink before FINISHED
-    private static final double BAR_DRAIN_FULL_FRAMES = 90.0; // a full bar drains in ~1.5s
+    private static final double BAR_DRAIN_FULL_FRAMES = 20.0; // a full bar drains in ~2.5s
+    // Catch animation timing — ball flies in an arc, sits briefly, wobbles N times, then resolves.
+    private static final int THROW_FLY_FRAMES = 42;
+    private static final int BALL_LAND_HOLD = 14;
+    private static final int WOBBLE_FRAMES = 38;
+    private static final int POST_WOBBLE_HOLD = 18;
+    // Where the ball ends up on the enemy and where it starts (lower-left, off-trainer).
+    private static final int BALL_START_X = 140, BALL_START_Y = 580;
+    private static final int BALL_LAND_X  = 685, BALL_LAND_Y  = 235;
+    private static final int BALL_DRAW_SIZE = 56;
+    private static final double THROW_ARC_HEIGHT = 240.0;
+    private static final double WOBBLE_MAX_TILT = 0.40; // radians (~23 degrees)
 
-    // Catch animation
-    private static final int CATCH_THROW_FRAMES = 30;   // ball arcs from player toward enemy
-    private static final int CATCH_SHAKE_FRAMES = 28;   // one full left-right wiggle
-    private static final int CATCH_NO_SHAKE_HOLD = 30;  // pause when the ball breaks immediately
-    private static final int BALL_START_X = 200;
-    private static final int BALL_START_Y = 380;
-    private static final int BALL_END_X = 647;          // centered on the enemy sprite at (600,150,175,175)
-    private static final int BALL_END_Y = 197;
-    private static final int BALL_SIZE = 80;
-    private static final int BALL_ARC_HEIGHT = 140;
-
-    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, FAINT_ANIM, CATCH_THROW, CATCH_SHAKE, FINISHED }
+    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, BALL_THROW, FAINT_ANIM, FINISHED }
 
     private final GamePanel gp;
     private final KeyHandler keyH;
@@ -72,25 +74,26 @@ public class BattleSystem {
     // -1 = no damage in current message. Otherwise the messageFrame at which damage hit.
     private int damageAppliedFrame = -1;
 
-    // Catch state. ballOnEnemy keeps the ball drawn (and the enemy sprite hidden) across the
-    // shake phase and the result message until either the encounter ends or the ball breaks.
-    private final BufferedImage pokeballImg;
-    private int catchFrame;
-    private int catchShakeCount;
-    private int catchShakesNeeded;
+    // Catch state. enemyHidden hides the wild sprite once the ball "lands"; the rest is
+    // pre-rolled at throw time so the wobble count and result are committed before animating.
+    private int throwFrame;
+    private boolean ballOnEnemy;     // ball has finished its arc and is resting on the enemy
+    private boolean ballVisible;     // ball drawn this frame (cleared when it pops open on a miss)
+    private boolean enemyHidden;
+    private boolean ballThrowResolved;
     private boolean catchSuccess;
-    private boolean ballOnEnemy;
+    private int shakeCount;          // 0-3 = wobbles before break, 4 = caught
+    private Move postCatchEnemyMove; // a failed catch uses your turn — enemy attacks once after
+    private BufferedImage ballImage;
 
     public BattleSystem(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
-        BufferedImage ball = null;
         try {
-            ball = ImageIO.read(new File("./src/res/objects/pokeball.png"));
+            this.ballImage = ImageIO.read(new File("./src/res/objects/pokeball.png"));
         } catch (IOException e) {
             e.printStackTrace();
         }
-        this.pokeballImg = ball;
     }
 
     public void start() {
@@ -105,11 +108,14 @@ public class BattleSystem {
         pendingDamageTarget = null;
         pendingDamage = 0;
         damageAppliedFrame = -1;
-        catchFrame = 0;
-        catchShakeCount = 0;
-        catchShakesNeeded = 0;
-        catchSuccess = false;
+        throwFrame = 0;
         ballOnEnemy = false;
+        ballVisible = false;
+        enemyHidden = false;
+        ballThrowResolved = false;
+        catchSuccess = false;
+        shakeCount = 0;
+        postCatchEnemyMove = null;
         // Seed prev* with current state so a key already held when the battle
         // begins must be released and re-pressed before it registers.
         prevZ = keyH.zPressed;
@@ -123,10 +129,6 @@ public class BattleSystem {
     public boolean isFinished() { return phase == Phase.FINISHED; }
     public boolean playerWon()  { return enemy().currentHP <= 0 && player().currentHP > 0; }
 
-    // True while a thrown pokeball is sitting on the enemy (shake + result message). The
-    // encounter uses this to suppress the enemy sprite so the ball isn't drawn over top of it.
-    public boolean enemyHiddenByBall() { return ballOnEnemy; }
-
     // 0 = upright, 1 = fully sunk. Used by PokemonEncounter to translate+clip the sprite.
     public double enemyFaintFraction() {
         if (!enemyFainting) return 0.0;
@@ -136,6 +138,10 @@ public class BattleSystem {
         if (!playerFainting) return 0.0;
         return Math.min(1.0, faintFrame / (double) FAINT_FRAMES);
     }
+
+    // True while the thrown ball is sitting on the enemy. PokemonEncounter checks this
+    // to skip drawing the wild sprite so the ball reads as "containing" it.
+    public boolean enemyHiddenByBall() { return enemyHidden; }
 
     private Pokemon player() { return gp.playerPokemon.pokemonEquipped.get(0); }
     private Pokemon enemy()  { return gp.wildPokemon; }
@@ -176,26 +182,18 @@ public class BattleSystem {
             if (faintFrame >= FAINT_FRAMES + POST_FAINT_HOLD) phase = Phase.FINISHED;
             return;
         }
-        if (phase == Phase.CATCH_THROW) {
-            catchFrame++;
-            if (catchFrame >= CATCH_THROW_FRAMES) {
-                phase = Phase.CATCH_SHAKE;
-                catchFrame = 0;
+        if (phase == Phase.BALL_THROW) {
+            throwFrame++;
+            if (throwFrame == THROW_FLY_FRAMES) {
+                // Ball reached the enemy: lock it there and pull the enemy sprite off-screen.
                 ballOnEnemy = true;
+                enemyHidden = true;
             }
-            return;
-        }
-        if (phase == Phase.CATCH_SHAKE) {
-            catchFrame++;
-            // 0 shakes = ball pops open instantly; hold briefly so the player sees it land first.
-            if (catchShakesNeeded == 0) {
-                if (catchFrame >= CATCH_NO_SHAKE_HOLD) resolveCatch();
-                return;
-            }
-            if (catchFrame >= CATCH_SHAKE_FRAMES) {
-                catchShakeCount++;
-                catchFrame = 0;
-                if (catchShakeCount >= catchShakesNeeded) resolveCatch();
+            int wobbles = displayedWobbleCount();
+            int resolveAt = THROW_FLY_FRAMES + BALL_LAND_HOLD + wobbles * WOBBLE_FRAMES + POST_WOBBLE_HOLD;
+            if (throwFrame >= resolveAt && !ballThrowResolved) {
+                ballThrowResolved = true;
+                beginCatchResolution();
             }
             return;
         }
@@ -263,35 +261,9 @@ public class BattleSystem {
 
     private void handleActionInput() {
         if (justZ)      phase = Phase.CHOOSE_MOVE;                     // Fight
-        else if (justX) startCatch();                                  // Catch (was Bag)
+        else if (justX) startBallThrow();                              // Bag = throw Poke Ball
         else if (justC) queue("You don't have another Pokemon!",   () -> phase = Phase.CHOOSE_ACTION);
         else if (justV) queue("You got away safely!",              () -> phase = Phase.FINISHED);
-    }
-
-    // Decide the catch outcome up front, then play the animation that's consistent with it
-    // (a successful catch always shows 3 shakes + click; a failure shakes 0–3 times then breaks).
-    private void startCatch() {
-        phase = Phase.CATCH_THROW;
-        catchFrame = 0;
-        catchShakeCount = 0;
-        ballOnEnemy = false;
-        Pokemon e = enemy();
-        double maxHp = Math.max(1, e.maxHP);
-        double hpFactor = (3.0 * maxHp - 2.0 * e.currentHP) / (3.0 * maxHp); // 1/3 at full HP, 1 at 0 HP
-        double chance = Math.max(0.05, Math.min(0.95, hpFactor * 0.85));
-        catchSuccess = RNG.nextDouble() < chance;
-        catchShakesNeeded = catchSuccess ? 3 : RNG.nextInt(4);
-    }
-
-    private void resolveCatch() {
-        if (catchSuccess) {
-            queue("Gotcha! " + enemy().name + " was caught!", () -> phase = Phase.FINISHED);
-        } else {
-            queue("Aw! It broke free!", () -> {
-                ballOnEnemy = false;
-                phase = Phase.CHOOSE_ACTION;
-            });
-        }
     }
 
     private void handleMoveInput() {
@@ -417,6 +389,83 @@ public class BattleSystem {
         return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
     }
 
+    // ----- catch flow -----
+
+    // Throw a Poke Ball. Roll the catch result up-front so the wobble count and outcome are
+    // committed before the animation plays, then transition to BALL_THROW for the visual.
+    private void startBallThrow() {
+        Pokemon e = enemy();
+        // Pre-pick the enemy's response now — a failed catch still uses the turn.
+        postCatchEnemyMove = pickAIMove(e);
+        shakeCount = rollCatch(e);
+        catchSuccess = shakeCount >= 4;
+        throwFrame = 0;
+        ballOnEnemy = false;
+        ballVisible = true;
+        enemyHidden = false;
+        ballThrowResolved = false;
+        currentMessage = "";
+        messageFrame = 0;
+        damageAppliedFrame = -1;
+        phase = Phase.BALL_THROW;
+    }
+
+    // Show three wobbles on success (per the games), or however many shake checks passed on a miss.
+    private int displayedWobbleCount() {
+        return catchSuccess ? 3 : Math.min(shakeCount, 3);
+    }
+
+    // Gen 5+ catch formula with a plain Poke Ball (ballBonus = 1, no status bonus).
+    //   a = ((3*HPmax - 2*HPcur) * captureRate) / (3*HPmax)
+    //   b = 65536 / (255/a)^(3/16)
+    // Then roll four 16-bit ints; each one under b is a successful "shake". 4 = caught.
+    private int rollCatch(Pokemon e) {
+        int hpMax = Math.max(1, e.maxHP);
+        int hpCur = Math.max(1, e.currentHP);
+        int cr = Math.max(1, e.captureRate);
+        double a = ((3.0 * hpMax - 2.0 * hpCur) * cr) / (3.0 * hpMax);
+        if (a >= 255) return 4;
+        if (a < 1) a = 1;
+        double b = 65536.0 / Math.pow(255.0 / a, 3.0 / 16.0);
+        int shakes = 0;
+        for (int i = 0; i < 4; i++) {
+            if (RNG.nextInt(65536) < b) shakes++;
+            else break;
+        }
+        return shakes;
+    }
+
+    private void beginCatchResolution() {
+        Pokemon e = enemy();
+        if (catchSuccess) {
+            // Ball stays sitting on the (hidden) enemy through the verdict and the fade.
+            queue("Gotcha! " + e.name + " was caught!", () -> {
+                gp.playerPokemon.addPokemonCaught();
+                phase = Phase.FINISHED;
+            });
+        } else {
+            // Ball pops open: hide the ball, bring the enemy back, then the canonical breakaway line.
+            ballVisible = false;
+            ballOnEnemy = false;
+            enemyHidden = false;
+            queue(breakFreeLine(shakeCount), () -> {
+                doEnemyAttack(postCatchEnemyMove);
+                then(this::afterEnemyAttack);
+            });
+        }
+    }
+
+    // Mainline Pokemon's shake-count-keyed break-free lines (Gen 4/5 wording).
+    private static String breakFreeLine(int shakes) {
+        switch (shakes) {
+            case 0:  return "Oh no! The Pokemon broke free!";
+            case 1:  return "Aww! It appeared to be caught!";
+            case 2:  return "Aargh! Almost had it!";
+            case 3:  return "Gah! It was so close, too!";
+            default: return "Oh no! The Pokemon broke free!";
+        }
+    }
+
     // ----- message queue helpers -----
 
     // Enqueue one message; the queued `after` runs once the WHOLE queue drains.
@@ -443,8 +492,6 @@ public class BattleSystem {
         drawHpFill(g2, displayedPlayerHP, player().maxHP, 609, 391, 171, 9);
         drawPlayerHpText(g2, smallFont);
 
-        if (shouldDrawCatchBall()) drawCatchBall(g2);
-
         if (phase == Phase.CHOOSE_ACTION) {
             drawActionMenu(g2, encounterAssets, bigFont);
         } else if (phase == Phase.CHOOSE_MOVE) {
@@ -453,32 +500,8 @@ public class BattleSystem {
                    && !currentMessage.isEmpty()) {
             drawDialog(g2, currentMessage, bigFont);
         }
-    }
-
-    private boolean shouldDrawCatchBall() {
-        if (phase == Phase.CATCH_THROW || phase == Phase.CATCH_SHAKE) return true;
-        // During the "Gotcha!" / "broke free!" message the ball stays put until the callback fires.
-        return phase == Phase.MESSAGE && ballOnEnemy;
-    }
-
-    private void drawCatchBall(Graphics2D g2) {
-        if (pokeballImg == null) return;
-        int x, y;
-        if (phase == Phase.CATCH_THROW) {
-            double t = catchFrame / (double) CATCH_THROW_FRAMES;
-            x = (int) Math.round(BALL_START_X + (BALL_END_X - BALL_START_X) * t);
-            // Parabolic arc peaking at t=0.5, pulling the midpoint BALL_ARC_HEIGHT pixels up.
-            double arc = -BALL_ARC_HEIGHT * (4.0 * t * (1.0 - t));
-            y = (int) Math.round(BALL_START_Y + (BALL_END_Y - BALL_START_Y) * t + arc);
-        } else if (phase == Phase.CATCH_SHAKE && catchShakesNeeded > 0) {
-            double s = (catchFrame / (double) CATCH_SHAKE_FRAMES) * Math.PI * 2.0;
-            x = BALL_END_X + (int) Math.round(Math.sin(s) * 10);
-            y = BALL_END_Y;
-        } else {
-            x = BALL_END_X;
-            y = BALL_END_Y;
-        }
-        g2.drawImage(pokeballImg, x, y, BALL_SIZE, BALL_SIZE, null);
+        // The ball overlays everything else (incl. the dialog box on "Gotcha!") whenever it's in play.
+        drawBall(g2);
     }
 
     private void drawHpFill(Graphics2D g2, double current, int max, int x, int y, int w, int h) {
@@ -499,30 +522,22 @@ public class BattleSystem {
         g2.setFont(small);
         g2.setColor(Color.black);
         Pokemon p = player();
-        g2.drawString((int) Math.ceil(displayedPlayerHP) + "/" + p.maxHP, 640, 425);
+        g2.drawString((int) Math.ceil(displayedPlayerHP) + "/" + p.maxHP, 640, 428);
     }
 
     private void drawActionMenu(Graphics2D g2, BufferedImage[] assets, Font font) {
         g2.drawImage(assets[1], 500, 497, 364, 175, null);
         Pokemon p = player();
 
-        // "What will X do?" prompt on the left dialog half.
+        // FIGHT/BAG/POK&MON/RUN and the Z/X/C/V key cues are baked into 1_FBPR.png.
         g2.setFont(font);
         g2.setColor(Color.black);
         g2.drawString("What will " + p.name, 40, gp.screenHeight - 110);
         g2.drawString("do?", 40, gp.screenHeight - 70);
+
         g2.setColor(Color.white);
         g2.drawString("What will " + p.name, 38, gp.screenHeight - 112);
         g2.drawString("do?", 38, gp.screenHeight - 72);
-
-        // Key cues placed to the right of each baked label in 1_FBPR.png. The label baselines
-        // sit at y=582 (top row) and y=636 (bottom row) when the asset is drawn at 500,497,364,175.
-        g2.setFont(font.deriveFont(Font.BOLD, 22f));
-        g2.setColor(new Color(200, 40, 40));
-        g2.drawString("(Z)", 625, 582);   // after FIGHT
-        g2.drawString("(X)", 815, 582);   // after CATCH
-        g2.drawString("(C)", 632, 636);   // after POKéMON
-        g2.drawString("(V)", 780, 636);   // after RUN
     }
 
     private void drawMoveMenu(Graphics2D g2, BufferedImage[] assets, Font font) {
@@ -547,6 +562,44 @@ public class BattleSystem {
             g2.setColor(new Color(40, 40, 40));
             g2.drawString(text, xs[i], ys[i]);
         }
+    }
+
+    // Draw the pokeball in whatever state matches the current throwFrame: parabolic arc while
+    // flying, then a sinusoidal tilt for each wobble. Pivot at the ball center so the tilt looks
+    // like the ball rocking on the ground.
+    private void drawBall(Graphics2D g2) {
+        if (ballImage == null || !ballVisible) return;
+        int cx, cy;
+        double rotation;
+        if (!ballOnEnemy) {
+            double t = Math.min(1.0, throwFrame / (double) THROW_FLY_FRAMES);
+            cx = (int) (BALL_START_X + (BALL_LAND_X - BALL_START_X) * t);
+            double base = BALL_START_Y + (BALL_LAND_Y - BALL_START_Y) * t;
+            cy = (int) (base - Math.sin(Math.PI * t) * THROW_ARC_HEIGHT);
+            rotation = t * Math.PI * 4; // two full spins mid-air
+        } else {
+            cx = BALL_LAND_X;
+            cy = BALL_LAND_Y;
+            int sinceLand = throwFrame - THROW_FLY_FRAMES - BALL_LAND_HOLD;
+            int wobbles = displayedWobbleCount();
+            if (sinceLand >= 0 && sinceLand < wobbles * WOBBLE_FRAMES) {
+                int wobbleT = sinceLand % WOBBLE_FRAMES;
+                // One sine cycle per wobble: right, back, left, back to upright.
+                rotation = Math.sin(2 * Math.PI * wobbleT / WOBBLE_FRAMES) * WOBBLE_MAX_TILT;
+            } else {
+                rotation = 0;
+            }
+        }
+        // Clip to the field area so the arc never bleeds onto the bottom dialog bar.
+        java.awt.Shape oldClip = g2.getClip();
+        g2.setClip(0, 0, gp.screenWidth, gp.screenHeight - 175);
+        AffineTransform saved = g2.getTransform();
+        g2.translate(cx, cy);
+        g2.rotate(rotation);
+        g2.drawImage(ballImage, -BALL_DRAW_SIZE / 2, -BALL_DRAW_SIZE / 2,
+                                 BALL_DRAW_SIZE, BALL_DRAW_SIZE, null);
+        g2.setTransform(saved);
+        g2.setClip(oldClip);
     }
 
     private void drawDialog(Graphics2D g2, String text, Font font) {

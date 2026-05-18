@@ -227,7 +227,7 @@ public class PokemonEncounter {
         //background
         g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight-175, null);
 
-        // Skip the enemy sprite once a thrown pokeball is sitting on it, so the ball isn't drawn over the pokemon.
+        // Skip the enemy sprite once a thrown ball is sitting on it, so the ball reads as containing the wild Pokemon.
         if (!battle.enemyHiddenByBall()) {
             drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
                               600, 150, 175, 175, battle.enemyFaintFraction());
@@ -238,13 +238,13 @@ public class PokemonEncounter {
         drawEncounterAssets();
     }
 
-    // Right-align the level to where a 2-digit number ends at `leftX`, so 1/2/3-digit
-    // levels each anchor differently and "100" doesn't push past the UI bar.
+    // Draw the level in a smaller font than the name so 3-digit values (Lv 100) still fit
+    // at the natural left anchor without spilling out of the HP bar.
     private void drawLevel(int level, int leftX, int y){
-        java.awt.FontMetrics fm = g2.getFontMetrics();
-        int rightEdge = leftX + fm.stringWidth("99");
-        String s = Integer.toString(level);
-        g2.drawString(s, rightEdge - fm.stringWidth(s), y);
+        Font prev = g2.getFont();
+        g2.setFont(prev.deriveFont(prev.getStyle(), 24f));
+        g2.drawString(Integer.toString(level), leftX, y);
+        g2.setFont(prev);
     }
 
     // While a Pokemon is fainting, translate it downward by `fraction * height` and clip to its
