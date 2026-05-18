@@ -28,12 +28,19 @@ public class PlayerObjectInteraction {
         gp.obj.set(i, null);
     }
 
+    // 1% of all wild encounters roll into the legendary/mythical pool; the other 99% draw
+    // from the normal pool. The split is overall, not per-pool, so adding more legendaries
+    // doesn't change the total legendary encounter rate.
+    private static final double LEGENDARY_ENCOUNTER_RATE = 0.01;
+
     private void touchBushRoute1(double encounterRate) {
         if (RNG.nextDouble() > encounterRate) return;
         changeMusic();
         gp.gameState = gp.pokemonTransition;
         int level = RNG.nextInt(3) + 3;
-        gp.wildPokemon = getWildPokemon.findRandomPokemon(level);
+        gp.wildPokemon = RNG.nextDouble() < LEGENDARY_ENCOUNTER_RATE
+            ? getWildPokemon.findRandomLegendaryPokemon(level)
+            : getWildPokemon.findRandomNormalPokemon(level);
     }
 
     private void changeMusic() {

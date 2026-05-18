@@ -21,6 +21,8 @@ public class Pokemon {
 
     public int captureRate;
 
+    public boolean isLegendary;
+
     public double percentMale;
     public String gender;
     

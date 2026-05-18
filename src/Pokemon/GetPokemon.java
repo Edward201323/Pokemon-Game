@@ -2,7 +2,9 @@ package Pokemon;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -10,6 +12,10 @@ public class GetPokemon {
     private static final String CSV_PATH = "./src/res/PokemonData/PokemonStats.csv";
     private static final Random RNG = new Random();
     private static final Map<String, String[]> CACHE = loadAll();
+    // Split pools indexed by is_legendary so encounter callers can roll against
+    // each one without re-scanning the full pokedex on every encounter.
+    private static final String[] LEGENDARY_NAMES = collectByLegendary(true);
+    private static final String[] NORMAL_NAMES    = collectByLegendary(false);
 
     private static Map<String, String[]> loadAll() {
         Map<String, String[]> map = new HashMap<>();
@@ -69,6 +75,30 @@ public class GetPokemon {
         String[] names = CACHE.keySet().toArray(new String[0]);
         if (names.length == 0) return null;
         return findPokemon(names[RNG.nextInt(names.length)], level);
+    }
+
+    // Pick a random non-legendary/non-mythical species. Used for the normal 99% of encounters.
+    public Pokemon findRandomNormalPokemon(int level) {
+        if (NORMAL_NAMES.length == 0) return findRandomPokemon(level);
+        return findPokemon(NORMAL_NAMES[RNG.nextInt(NORMAL_NAMES.length)], level);
+    }
+
+    // Pick a random legendary/mythical species. Used for the rare 1% encounter roll.
+    public Pokemon findRandomLegendaryPokemon(int level) {
+        if (LEGENDARY_NAMES.length == 0) return findRandomPokemon(level);
+        return findPokemon(LEGENDARY_NAMES[RNG.nextInt(LEGENDARY_NAMES.length)], level);
+    }
+
+    // Walk the cached rows once at class-init and bucket names by is_legendary (col 21).
+    private static String[] collectByLegendary(boolean legendary) {
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, String[]> entry : CACHE.entrySet()) {
+            String[] row = entry.getValue();
+            if (row.length <= 21) continue;
+            boolean isLeg = "YES".equalsIgnoreCase(row[21]);
+            if (isLeg == legendary) names.add(entry.getKey());
+        }
+        return names.toArray(new String[0]);
     }
 
     private void assignPokemonInfo(Pokemon pokemon, String[] row, int level) {
@@ -139,6 +169,8 @@ public class GetPokemon {
         pokemon.spDefEVsGiven = Integer.parseInt(row[19]);
         pokemon.speedEVsGiven = Integer.parseInt(row[20]);
 
+        pokemon.isLegendary = "YES".equalsIgnoreCase(row[21]);
+
         assignAbility(pokemon, row);
 
         pokemon.shiny = RNG.nextDouble() <= 0.0005;
@@ -154,23 +186,23 @@ public class GetPokemon {
     }
 
     private void assignAbility(Pokemon pokemon, String[] row) {
-        int abilityCount = row.length - 21;
+        int abilityCount = row.length - 22;
         if (abilityCount <= 1) {
-            pokemon.ability1 = abilityCount == 1 ? row[21] : null;
+            pokemon.ability1 = abilityCount == 1 ? row[22] : null;
             pokemon.ability = pokemon.ability1;
             return;
         }
         if (abilityCount == 2) {
             // Two listed: first is normal, second is hidden (10% chance)
-            pokemon.ability1 = row[21];
-            pokemon.hiddenAbility = row[22];
+            pokemon.ability1 = row[22];
+            pokemon.hiddenAbility = row[23];
             pokemon.ability = RNG.nextDouble() < 0.1 ? pokemon.hiddenAbility : pokemon.ability1;
             return;
         }
         // Three or more: two normals (45% each) + hidden (10%)
-        pokemon.ability1 = row[21];
-        pokemon.ability2 = row[22];
-        pokemon.hiddenAbility = row[23];
+        pokemon.ability1 = row[22];
+        pokemon.ability2 = row[23];
+        pokemon.hiddenAbility = row[24];
         double r = RNG.nextDouble();
         if (r < 0.1) {
             pokemon.ability = pokemon.hiddenAbility;
