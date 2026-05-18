@@ -1,56 +1,127 @@
 package PlayerInventory;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
+import java.awt.Stroke;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
 
 import Main.GamePanel;
 import Main.KeyHandler;
 import Pokemon.GetPokemonImages;
 import Pokemon.Pokemon;
-import PokemonEncounters.PokemonEncounter;
 
+// Custom-drawn party UI. Dark gradient background, six rounded-card slots in a 2x3 grid,
+// active/fainted/selectable states all visually distinct. Also hosts the reusable
+// selection mode used by the battle switcher and the PC swap flow.
 public class OpenPlayerInventory {
     private final GamePanel gp;
     private final KeyHandler keyH;
-    private final BufferedImage[] inventoryAssets = new BufferedImage[3];
     private final GetPokemonImages pokemonImages = new GetPokemonImages();
 
-    // Layout of the six slots inside 1_PokemonEquipped.png, as fractions of the image
-    // (and thus the screen, since we scale the image to fill). Two columns, three rows.
-    // The asset is asymmetric: the right column is ~32px wider AND ~70px lower than the
-    // left in the 1404x1120 source, so positions are per-column. Values measured by pixel
-    // brightness sampling against the source.
-    private static final double[] COL_X = { 0.0214, 0.520 };
-    private static final double[] COL_W = { 0.456, 0.463 };
-    private static final double[][] ROW_Y = {
-        { 0.129, 0.379, 0.629 }, // left column
-        { 0.191, 0.441, 0.691 }, // right column
-    };
-    private static final double SLOT_H = 0.188;
+    // Layout constants tuned for 864x672. Two columns x three rows, centered horizontally,
+    // with a title strip at the top.
+    private static final int CARD_W = 380;
+    private static final int CARD_H = 150;
+    private static final int GAP_X = 24;
+    private static final int GAP_Y = 16;
+    private static final int GRID_TOP = 96;
 
-    private Font slotName;
-    private Font slotMeta;
+    private Font titleFont;
+    private Font nameFont;
+    private Font metaFont;
+    private Font promptFont;
+    private Font faintedFont;
 
-    // Edge detection so a held key doesn't oscillate open/close every frame.
+    // Edge detection.
     private boolean prevP, prevI;
+    private boolean prevZ, prevX, prevUp, prevDown, prevLeft, prevRight, prevEnter;
+
+    // Selection mode (shared by battle switching and PC swap).
+    private boolean selectionMode;
+    private boolean cancellable;
+    private IntPredicate selectableFilter;
+    private IntConsumer onSelected;
+    private Runnable onCancelled;
+    private int cursor;
+    private int returnState;
+    private String prompt;
 
     public OpenPlayerInventory(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
-        PokemonEncounter.loadIndexedImages("./src/res/PlayerInventoryAssets", inventoryAssets);
         loadFonts();
     }
 
     private void loadFonts() {
         try {
             Font base = Font.createFont(Font.TRUETYPE_FONT, new File("./src/res/Font/MaruMonica.ttf"));
-            slotName = base.deriveFont(Font.BOLD, 30f);
-            slotMeta = base.deriveFont(Font.BOLD, 24f);
+            titleFont = base.deriveFont(Font.BOLD, 44f);
+            nameFont = base.deriveFont(Font.BOLD, 30f);
+            metaFont = base.deriveFont(Font.BOLD, 22f);
+            promptFont = base.deriveFont(Font.BOLD, 24f);
+            faintedFont = base.deriveFont(Font.BOLD, 22f);
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    // Public entry point: open the party UI in selection mode. Caller provides a prompt
+    // string, whether X can cancel, an optional per-slot selectable filter, and the two
+    // callbacks. The current gameState is captured and restored on close.
+    public void openInSelectionMode(String prompt,
+                                    boolean cancellable,
+                                    IntPredicate selectable,
+                                    IntConsumer onSelected,
+                                    Runnable onCancelled) {
+        this.selectionMode = true;
+        this.cancellable = cancellable;
+        this.selectableFilter = selectable;
+        this.onSelected = onSelected;
+        this.onCancelled = onCancelled;
+        this.prompt = prompt;
+        this.returnState = gp.gameState;
+
+        int n = gp.playerPokemon.pokemonEquipped.size();
+        this.cursor = 0;
+        for (int i = 0; i < n; i++) {
+            if (isSlotSelectable(i)) { this.cursor = i; break; }
+        }
+        // Seed every edge-tracked key so the same press that opened the selector doesn't
+        // immediately confirm/cancel on the next frame.
+        prevP = keyH.pPressed; prevI = keyH.iPressed;
+        prevZ = keyH.zPressed; prevX = keyH.xPressed;
+        prevEnter = keyH.enterPressed;
+        prevUp = keyH.upPressed; prevDown = keyH.downPressed;
+        prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
+
+        gp.gameState = gp.InventoryPokemonState;
+    }
+
+    private boolean isSlotSelectable(int slot) {
+        int n = gp.playerPokemon.pokemonEquipped.size();
+        if (slot < 0 || slot >= n) return false;
+        if (selectableFilter == null) return true;
+        return selectableFilter.test(slot);
+    }
+
+    private void closeSelector(boolean confirmed) {
+        int selected = cursor;
+        IntConsumer cb = onSelected;
+        Runnable cancel = onCancelled;
+        boolean wasCancellable = cancellable;
+        selectionMode = false;
+        selectableFilter = null;
+        onSelected = null;
+        onCancelled = null;
+        prompt = null;
+        gp.gameState = returnState;
+        if (confirmed && cb != null) cb.accept(selected);
+        else if (!confirmed && wasCancellable && cancel != null) cancel.run();
     }
 
     public void draw(Graphics2D g2) {
@@ -63,9 +134,11 @@ public class OpenPlayerInventory {
         }
     }
 
-    // P toggles the party menu, I toggles the bag. Edge-detected so holding the key down
-    // doesn't ping-pong the state every frame.
     private void openInventory() {
+        if (selectionMode) {
+            handleSelectionInput();
+            return;
+        }
         boolean justP = keyH.pPressed && !prevP;
         boolean justI = keyH.iPressed && !prevI;
         prevP = keyH.pPressed;
@@ -81,54 +154,155 @@ public class OpenPlayerInventory {
         }
     }
 
-    private void drawInventoryPokemon(Graphics2D g2) {
-        BufferedImage bg = inventoryAssets[1];
-        if (bg != null) {
-            g2.drawImage(bg, 0, 0, gp.screenWidth, gp.screenHeight, null);
+    private void handleSelectionInput() {
+        // Enter is the primary confirm; Z still works as an alternative.
+        boolean justConfirm = (keyH.enterPressed && !prevEnter) || (keyH.zPressed && !prevZ);
+        boolean justX = keyH.xPressed && !prevX;
+        boolean justUp = keyH.upPressed && !prevUp;
+        boolean justDown = keyH.downPressed && !prevDown;
+        boolean justLeft = keyH.leftPressed && !prevLeft;
+        boolean justRight = keyH.rightPressed && !prevRight;
+        prevZ = keyH.zPressed; prevX = keyH.xPressed;
+        prevEnter = keyH.enterPressed;
+        prevUp = keyH.upPressed; prevDown = keyH.downPressed;
+        prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
+        prevP = keyH.pPressed; prevI = keyH.iPressed;
+
+        int n = gp.playerPokemon.pokemonEquipped.size();
+        if (justUp && cursor >= 2) cursor -= 2;
+        if (justDown && cursor + 2 < n) cursor += 2;
+        if (justLeft && cursor % 2 == 1) cursor -= 1;
+        if (justRight && cursor % 2 == 0 && cursor + 1 < n) cursor += 1;
+
+        if (justConfirm && isSlotSelectable(cursor)) {
+            closeSelector(true);
+        } else if (justX && cancellable) {
+            closeSelector(false);
         }
+    }
+
+    // ----- drawing -----
+
+    private void drawInventoryPokemon(Graphics2D g2) {
+        // Background gradient: deep teal → near-black for clean contrast against the cards.
+        g2.setPaint(new GradientPaint(0, 0, new Color(26, 47, 61),
+                                      0, gp.screenHeight, new Color(14, 22, 32)));
+        g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
+
+        // Title strip.
+        if (titleFont != null) g2.setFont(titleFont);
+        g2.setColor(new Color(230, 240, 250));
+        g2.drawString("PARTY", 32, 60);
+
+        // Header hint at top-right: either the selection prompt or the close key.
+        if (promptFont != null) g2.setFont(promptFont);
+        if (selectionMode && prompt != null) {
+            g2.setColor(new Color(255, 220, 60));
+            String text = prompt + (cancellable ? "   (X to cancel)" : "");
+            int tw = g2.getFontMetrics().stringWidth(text);
+            g2.drawString(text, gp.screenWidth - tw - 32, 56);
+        } else {
+            g2.setColor(new Color(160, 175, 190));
+            String hint = "P to close";
+            int tw = g2.getFontMetrics().stringWidth(hint);
+            g2.drawString(hint, gp.screenWidth - tw - 32, 56);
+        }
+
+        int gridW = CARD_W * 2 + GAP_X;
+        int startX = (gp.screenWidth - gridW) / 2;
         for (int i = 0; i < 6; i++) {
-            // Rows-first ordering: top-left=1, top-right=2, middle-left=3, etc.
             int col = i % 2;
             int row = i / 2;
-            int x = (int) (COL_X[col] * gp.screenWidth);
-            int y = (int) (ROW_Y[col][row] * gp.screenHeight);
-            int w = (int) (COL_W[col] * gp.screenWidth);
-            int h = (int) (SLOT_H * gp.screenHeight);
-
+            int x = startX + col * (CARD_W + GAP_X);
+            int y = GRID_TOP + row * (CARD_H + GAP_Y);
             if (i < gp.playerPokemon.pokemonEquipped.size()) {
-                drawSlot(g2, gp.playerPokemon.pokemonEquipped.get(i), x, y, w, h);
+                drawCard(g2, gp.playerPokemon.pokemonEquipped.get(i), x, y, CARD_W, CARD_H, i);
+            } else {
+                drawEmptyCard(g2, x, y, CARD_W, CARD_H);
             }
         }
     }
 
-    // One party slot: front sprite on the left, then name + level + HP bar/text on the right.
-    private void drawSlot(Graphics2D g2, Pokemon p, int x, int y, int w, int h) {
-        int spriteSize = h - 12;
-        int spriteX = x + 8;
-        int spriteY = y + (h - spriteSize) / 2;
-        BufferedImage sprite = pokemonImages.getPokemonFront(p);
-        if (sprite != null) {
-            g2.drawImage(sprite, spriteX, spriteY, spriteSize, spriteSize, null);
+    private void drawCard(Graphics2D g2, Pokemon p, int x, int y, int w, int h, int slot) {
+        boolean fainted = p.currentHP <= 0;
+        boolean cursorHere = selectionMode && slot == cursor;
+        boolean selectable = !selectionMode || isSlotSelectable(slot);
+
+        // Card panel.
+        g2.setColor(fainted ? new Color(60, 30, 32, 230) : new Color(30, 45, 60, 230));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+
+        // Inner highlight for the lead party member (slot 0) when not in selection mode,
+        // since slot 0 is what the game uses as "active" by default.
+        if (!selectionMode && slot == 0) {
+            g2.setColor(new Color(80, 200, 130, 60));
+            g2.fillRoundRect(x, y, 6, h, 6, 6); // little accent strip on the left
         }
 
-        int textX = spriteX + spriteSize + 12;
-        int nameBaseline = y + 36;
+        // Border (gold when cursor is here, dim slate otherwise).
+        Stroke oldStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(cursorHere ? 4f : 2f));
+        g2.setColor(cursorHere ? new Color(255, 220, 60)
+                               : new Color(80, 110, 140, 200));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+        g2.setStroke(oldStroke);
 
-        if (slotName != null) g2.setFont(slotName);
-        g2.setColor(Color.white);
-        g2.drawString(p.name, textX, nameBaseline);
+        // Sprite.
+        int spriteSize = h - 24;
+        int sX = x + 14;
+        int sY = y + (h - spriteSize) / 2;
+        BufferedImage sprite = pokemonImages.getPokemonFront(p);
+        if (sprite != null) {
+            g2.drawImage(sprite, sX, sY, spriteSize, spriteSize, null);
+        }
 
-        if (slotMeta != null) g2.setFont(slotMeta);
-        g2.setColor(new Color(220, 220, 220));
-        g2.drawString("Lv " + p.level, textX, nameBaseline + 24);
+        // Text area.
+        int textX = sX + spriteSize + 14;
+        if (nameFont != null) g2.setFont(nameFont);
+        g2.setColor(fainted ? new Color(220, 130, 130) : Color.white);
+        g2.drawString(p.name, textX, y + 38);
 
+        if (metaFont != null) g2.setFont(metaFont);
+        g2.setColor(new Color(190, 200, 210));
+        g2.drawString("Lv " + p.level, textX, y + 64);
+
+        // HP bar.
         int barX = textX;
-        int barY = y + h - 50;
-        int barW = (x + w) - barX - 12;
-        int barH = 10;
+        int barY = y + h - 52;
+        int barW = (x + w) - barX - 16;
+        int barH = 12;
         drawHpBar(g2, p, barX, barY, barW, barH);
+
+        // HP text.
+        if (metaFont != null) g2.setFont(metaFont);
         g2.setColor(Color.white);
         g2.drawString(p.currentHP + "/" + p.maxHP, barX, barY + barH + 18);
+
+        // FAINTED tag.
+        if (fainted && faintedFont != null) {
+            g2.setFont(faintedFont);
+            g2.setColor(new Color(220, 80, 80));
+            g2.drawString("FAINTED", textX + 110, y + 38);
+        }
+
+        // Dim non-selectable slots after the card is drawn so the dim layer covers everything.
+        if (selectionMode && !selectable) {
+            g2.setColor(new Color(0, 0, 0, 130));
+            g2.fillRoundRect(x, y, w, h, 18, 18);
+        }
+    }
+
+    private void drawEmptyCard(Graphics2D g2, int x, int y, int w, int h) {
+        g2.setColor(new Color(30, 45, 60, 110));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        Stroke oldStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(60, 80, 100, 170));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+        g2.setStroke(oldStroke);
+        if (metaFont != null) g2.setFont(metaFont);
+        g2.setColor(new Color(90, 110, 130));
+        g2.drawString("Empty", x + 22, y + h / 2 + 6);
     }
 
     private void drawHpBar(Graphics2D g2, Pokemon p, int x, int y, int w, int h) {
@@ -139,10 +313,13 @@ public class OpenPlayerInventory {
         if (ratio > 0.5)      fill = new Color(80, 200, 80);
         else if (ratio > 0.2) fill = new Color(230, 200, 60);
         else                  fill = new Color(220, 60, 60);
-        g2.setColor(new Color(20, 20, 20));
-        g2.fillRect(x, y, w, h);
-        g2.setColor(fill);
-        g2.fillRect(x, y, filled, h);
+        // Track + fill with subtle rounded ends.
+        g2.setColor(new Color(20, 25, 32));
+        g2.fillRoundRect(x, y, w, h, h, h);
+        if (filled > 0) {
+            g2.setColor(fill);
+            g2.fillRoundRect(x, y, filled, h, h, h);
+        }
     }
 
     private void drawInventoryBag(Graphics2D g2) {

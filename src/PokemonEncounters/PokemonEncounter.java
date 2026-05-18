@@ -122,56 +122,32 @@ public class PokemonEncounter {
  
     public void drawBeforeEncounterAssets() {
         counterB++;
- 
+
         if(ballThrown == false){
             //Draw Dawn
             g2.drawImage(encounterAssets[9],75,298, 200, 200, null);
         }
- 
-        //Enemy Pokemon HP Bar
-        g2.drawImage(encounterAssets[3], 50, 50, 380, 100, null);
- 
-        //Enemy Gender
-        if(gp.wildPokemon.gender.equals("Male")){
-            g2.drawImage(encounterAssets[6], 280, 71, 20, 30, null);
-        }
-        if (gp.wildPokemon.gender.equals("Female")){
-            g2.drawImage(encounterAssets[5], 280, 71, 20, 30, null);
-        }
- 
-        g2.setFont(MaruMonicaSmall);
-        g2.setColor(Color.black);
-        //Name
-        g2.drawString(gp.wildPokemon.name, 85, 97);
- 
-        //Level
-        drawLevel(gp.wildPokemon.level, 338, 97);
- 
+
+        // Custom enemy HP panel — same look the battle uses, just driven with the wild's
+        // current HP directly (no animated easing yet, since the battle hasn't started).
+        BattleSystem.drawEnemyPanel(g2, gp.wildPokemon, gp.wildPokemon.currentHP, MaruMonicaSmall);
+
+        // Pre-encounter dialog uses the same custom panel as the battle dialog.
+        Pokemon leadForSendOut = gp.playerPokemon.pokemonEquipped.isEmpty()
+            ? null : gp.playerPokemon.pokemonEquipped.get(0);
         if(counterB<=150){
-            //Bottom UI Bar
-            g2.drawImage(encounterAssets[0], 0, gp.screenHeight-175, gp.screenWidth, 175,  null);
-            
-            g2.setFont(MaruMonica);
-            g2.setColor(Color.black);
-            g2.drawString("A wild "+gp.wildPokemon.name+" appeared!", 40, gp.screenHeight-110);
-            g2.setColor(Color.white);
-            g2.drawString("A Wild "+gp.wildPokemon.name+" appeared!", 38, gp.screenHeight-112);
+            BattleSystem.drawDialogPanel(g2, "A wild "+gp.wildPokemon.name+" appeared!", MaruMonica,
+                                          gp.screenWidth, gp.screenHeight);
         }
         if(counterB>150){
             drawDawnThrowBall();
             ballThrown = true;
- 
-            //Bottom UI Bar
-            g2.drawImage(encounterAssets[0], 0, gp.screenHeight-175, gp.screenWidth, 175,  null);
-
-            g2.setFont(MaruMonica);
-            g2.setColor(Color.black);
-            g2.drawString("Go! "+gp.playerPokemon.pokemonEquipped.get(0).name+"!", 38, gp.screenHeight-110);
-            g2.setColor(Color.white);
-            g2.drawString("Go! "+gp.playerPokemon.pokemonEquipped.get(0).name+"!", 36, gp.screenHeight-112);
+            String name = leadForSendOut == null ? "" : leadForSendOut.name;
+            BattleSystem.drawDialogPanel(g2, "Go! "+name+"!", MaruMonica,
+                                          gp.screenWidth, gp.screenHeight);
         }
- 
- 
+
+
         //Draw fade animation
         animations.FadeOut(g2);
     }
@@ -232,8 +208,13 @@ public class PokemonEncounter {
             drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
                               600, 150, 175, 175, battle.enemyFaintFraction());
         }
-        drawPokemonSprite(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)),
-                          25, 235, 325, 325, battle.playerFaintFraction());
+        // Draw whichever party member is actually active (not always slot 0), and skip the
+        // sprite during a switch so the recall/throw dialog doesn't show the old pokemon.
+        Pokemon active = battle.activePokemon();
+        if (active != null && !battle.playerHiddenForSwitch()) {
+            drawPokemonSprite(getPokemonImages.getPokemonBack(active),
+                              25, 235, 325, 325, battle.playerFaintFraction());
+        }
 
         drawEncounterAssets();
     }
@@ -264,39 +245,11 @@ public class PokemonEncounter {
  
     private void drawEncounterAssets() {
         counterA++;
-        //draw dialogue bar
-        g2.drawImage(encounterAssets[0], 0, gp.screenHeight-175, gp.screenWidth, 175,  null); 
- 
-        //hp bar
-        g2.drawImage(encounterAssets[3], 50, 50, 380, 100, null);
-        g2.drawImage(encounterAssets[4], 427, 300, 400, 150, null);
- 
-        //Enemy Gender
-        if(gp.wildPokemon.gender.equals("Male")){
-            g2.drawImage(encounterAssets[6], 280, 71, 20, 30, null);
-        }
-        if (gp.wildPokemon.gender.equals("Female")){
-            g2.drawImage(encounterAssets[5], 280, 71, 20, 30, null);
-        }
-        //My Pokemon Gender
-        if(gp.playerPokemon.pokemonEquipped.get(0).gender.equals("Male")){
-            g2.drawImage(encounterAssets[6], 698, 350, 25, 30, null);
-        }
-        if(gp.playerPokemon.pokemonEquipped.get(0).gender.equals("Female")){
-            g2.drawImage(encounterAssets[5], 698, 350, 25, 30, null);
-        }
- 
-        g2.setFont(MaruMonicaSmall);
-        g2.setColor(Color.black);
-        //Name
-        g2.drawString(gp.wildPokemon.name, 85, 97);
-        g2.drawString(gp.playerPokemon.pokemonEquipped.get(0).name, 500, 376);
- 
-        //Levels
-        drawLevel(gp.wildPokemon.level, 338, 97);
-        drawLevel(gp.playerPokemon.pokemonEquipped.get(0).level, 762, 376);
- 
-        //Draw ui bar
+        // HP panels and dialog box are now custom-drawn by BattleSystem — keeps the
+        // active pokemon's name/level/HP in sync (instead of always slot-0) and avoids
+        // the old image sidebar.
+
+        // Action menu slide-in (still your asset since you redesigned it).
         if(counterA*71 < 497){
             g2.drawImage(encounterAssets[1], 500, counterA*71, 364, 175,  null);
         } else {

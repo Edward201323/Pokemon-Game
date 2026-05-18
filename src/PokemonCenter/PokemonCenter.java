@@ -19,9 +19,9 @@ import Pokemon.Pokemon;
 // Also hosts the minimalist PC viewer (Up/Down to scroll, Z/Esc to leave).
 public class PokemonCenter {
     private static final int MESSAGE_MIN_FRAMES = 70;
-    private static final int HEAL_BAR_FRAMES = 90;           // ~1.5s per refill at 60 FPS
-    private static final int HEAL_BAR_GAP_FRAMES = 8;        // small beat between pokemon
-    private static final int CHIME_INTERVAL_FRAMES = 18;     // soft pulse cadence
+    // Heal everyone in one quick global pass; no per-pokemon staggering, no screen pulse.
+    private static final int HEAL_TOTAL_FRAMES = 36;
+    private static final int HEAL_HOLD_FRAMES = 14;
 
     private enum Phase { CLOSED, INTRO, MENU, HEAL_PRE, HEAL_ANIM, HEAL_OUTRO, PC_VIEW }
     private static final String[] MENU_LABELS = { "HEAL", "PC", "EXIT" };
@@ -42,19 +42,18 @@ public class PokemonCenter {
     // Menu state.
     private int menuIndex;
 
-    // Heal animation state.
-    private int healIndex;       // which party slot is currently filling
-    private int healSubFrame;    // 0..HEAL_BAR_FRAMES
-    private double healStartHp;  // currentHP captured when this pokemon starts filling
-    private int chimeFrame;
+    // Heal animation state: a single global frame counter drives every party slot
+    // refilling simultaneously from its captured starting HP.
+    private int healFrame;
+    private int[] healStartHps;
 
     // PC viewer state.
     private int pcIndex;
     private List<Pokemon> pcCache;
 
-    // Edge detection so held keys don't auto-fire.
-    private boolean prevZ, prevX, prevUp, prevDown, prevP;
-    private boolean justZ, justX, justUp, justDown, justP;
+    // Edge detection so held keys don't auto-fire. justConfirm = Enter or Z (Enter is primary).
+    private boolean prevZ, prevX, prevUp, prevDown, prevP, prevEnter;
+    private boolean justConfirm, justX, justUp, justDown, justP;
 
     private Font bigFont, smallFont;
 
@@ -85,6 +84,7 @@ public class PokemonCenter {
         phase = Phase.INTRO;
         // Seed prev* with current state so a key already held when opening must be released first.
         prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed;
         prevX = keyH.xPressed;
         prevP = keyH.pPressed;
         prevUp = keyH.upPressed;
@@ -106,7 +106,7 @@ public class PokemonCenter {
             messageFrame++;
             boolean ready = autoAdvance
                 ? messageFrame >= MESSAGE_MIN_FRAMES
-                : (messageFrame >= 15 && justZ);
+                : (messageFrame >= 15 && justConfirm);
             if (ready) advanceMessage();
             return;
         }
@@ -126,16 +126,16 @@ public class PokemonCenter {
 
     public void draw(Graphics2D g2) {
         if (phase == Phase.CLOSED) return;
+        // Critical: when something else (the party selector) is layered on top, do not
+        // draw the PC viewer or center dialog overtop of it. We only own the screen
+        // while gameState matches one of ours.
+        if (gp.gameState != gp.pokemonCenterState && gp.gameState != gp.pcViewState) return;
         if (phase == Phase.PC_VIEW) {
             drawPcView(g2);
             return;
         }
-        // Heal animation pulses the screen white-ish in time with the chime.
+        // Heal animation: just the party panel with HP bars filling — no screen pulse.
         if (phase == Phase.HEAL_ANIM) {
-            double t = chimeFrame / (double) CHIME_INTERVAL_FRAMES;
-            int alpha = (int) (Math.max(0, Math.sin(t * Math.PI)) * 55);
-            g2.setColor(new Color(255, 255, 255, alpha));
-            g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
             drawHealParty(g2);
         }
         drawDialog(g2);
@@ -145,12 +145,28 @@ public class PokemonCenter {
     // ----- input helpers -----
 
     private void sampleEdges() {
-        justZ = keyH.zPressed && !prevZ;
+        // Enter is primary confirm, Z stays as an alternative.
+        boolean justZ = keyH.zPressed && !prevZ;
+        boolean justEnter = keyH.enterPressed && !prevEnter;
+        justConfirm = justZ || justEnter;
         justX = keyH.xPressed && !prevX;
         justP = keyH.pPressed && !prevP;
         justUp = keyH.upPressed && !prevUp;
         justDown = keyH.downPressed && !prevDown;
         prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed;
+        prevX = keyH.xPressed;
+        prevP = keyH.pPressed;
+        prevUp = keyH.upPressed;
+        prevDown = keyH.downPressed;
+    }
+
+    // External hook so callers (e.g. the party selector's swap callback) can resync our
+    // edge-detection state when control returns to us. Without this, prev* may reflect
+    // key state from many frames ago and the first X/Enter press can be missed.
+    public void refreshInput() {
+        prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed;
         prevX = keyH.xPressed;
         prevP = keyH.pPressed;
         prevUp = keyH.upPressed;
@@ -161,7 +177,7 @@ public class PokemonCenter {
         if (justUp)   menuIndex = (menuIndex + MENU_LABELS.length - 1) % MENU_LABELS.length;
         if (justDown) menuIndex = (menuIndex + 1) % MENU_LABELS.length;
         if (justX) { close(); return; }
-        if (!justZ) return;
+        if (!justConfirm) return;
         switch (menuIndex) {
             case 0: startHeal(); break;
             case 1: openPc(); break;
@@ -171,13 +187,48 @@ public class PokemonCenter {
 
     private void handlePcInput() {
         if (pcCache == null || pcCache.isEmpty()) {
-            if (justZ || justX || justP) close();
+            if (justConfirm || justX || justP) close();
             return;
         }
         if (justUp)   pcIndex = (pcIndex + pcCache.size() - 1) % pcCache.size();
         if (justDown) pcIndex = (pcIndex + 1) % pcCache.size();
-        if (justX || justP) close();
-        else if (justZ) close();
+        if (justX || justP) { close(); return; }
+        if (justConfirm) {
+            // Enter/Z on a PC entry: open the party UI to pick which slot to swap with.
+            final int allIdx = pcIndex;
+            gp.openPlayerInventory.openInSelectionMode(
+                "Swap with which Pokemon?",
+                true,
+                slot -> true,
+                partySlot -> { performPcSwap(allIdx, partySlot); refreshInput(); },
+                this::refreshInput
+            );
+        }
+    }
+
+    // Swap the pokemon at the "all caught" index with the party slot. If the source is itself
+    // in the party, this is a reorder; otherwise the party member is sent to PC storage and
+    // the PC pokemon takes the slot.
+    private void performPcSwap(int allIdx, int partySlot) {
+        java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+        java.util.List<Pokemon> box = gp.playerPokemon.pokemonInPC;
+        if (partySlot < 0 || partySlot >= party.size()) return;
+        Pokemon partyMon = party.get(partySlot);
+        if (allIdx < party.size()) {
+            // Source is also a party slot — just swap positions in the party list.
+            Pokemon src = party.get(allIdx);
+            party.set(allIdx, partyMon);
+            party.set(partySlot, src);
+        } else {
+            int boxIdx = allIdx - party.size();
+            if (boxIdx < 0 || boxIdx >= box.size()) return;
+            Pokemon src = box.get(boxIdx);
+            box.set(boxIdx, partyMon);
+            party.set(partySlot, src);
+        }
+        // Rebuild the snapshot and keep the cursor on the same row (clamped to the new size).
+        pcCache = gp.playerPokemon.allCaughtPokemon();
+        if (pcIndex >= pcCache.size()) pcIndex = Math.max(0, pcCache.size() - 1);
     }
 
     private void close() {
@@ -201,52 +252,30 @@ public class PokemonCenter {
 
     private void beginHealAnim() {
         phase = Phase.HEAL_ANIM;
-        healIndex = 0;
-        healSubFrame = 0;
-        chimeFrame = 0;
-        currentMessage = "Healing your Pokemon...";
-        seedHealForCurrent();
-    }
-
-    private void seedHealForCurrent() {
+        healFrame = 0;
         List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
-        if (party.isEmpty() || healIndex >= party.size()) return;
-        Pokemon p = party.get(healIndex);
-        healStartHp = (p == null) ? 0 : p.currentHP;
-        chimeFrame = 0;
+        healStartHps = new int[party.size()];
+        for (int i = 0; i < party.size(); i++) {
+            Pokemon p = party.get(i);
+            healStartHps[i] = (p == null) ? 0 : p.currentHP;
+        }
+        currentMessage = "Healing your Pokemon...";
     }
 
     private void tickHealAnimation() {
         List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
         if (party.isEmpty()) { finishHeal(); return; }
-
-        Pokemon p = party.get(healIndex);
-        if (p == null) { healIndex++; healSubFrame = 0; advanceHealIfDone(party); return; }
-
-        // Ease HP up linearly over HEAL_BAR_FRAMES.
-        healSubFrame++;
-        double t = Math.min(1.0, healSubFrame / (double) HEAL_BAR_FRAMES);
-        p.currentHP = (int) Math.round(healStartHp + (p.maxHP - healStartHp) * t);
-
-        chimeFrame++;
-        if (chimeFrame >= CHIME_INTERVAL_FRAMES) {
-            chimeFrame = 0;
-            // Visual pulse only; no SE here (the pokeball-open clip felt wrong for healing).
+        healFrame++;
+        double t = Math.min(1.0, healFrame / (double) HEAL_TOTAL_FRAMES);
+        // All slots refill simultaneously (no per-pokemon staggering).
+        for (int i = 0; i < party.size(); i++) {
+            Pokemon p = party.get(i);
+            if (p == null) continue;
+            int start = (i < healStartHps.length) ? healStartHps[i] : 0;
+            p.currentHP = (int) Math.round(start + (p.maxHP - start) * t);
         }
-
-        if (healSubFrame >= HEAL_BAR_FRAMES + HEAL_BAR_GAP_FRAMES) {
-            p.currentHP = p.maxHP; // snap in case of rounding
-            healIndex++;
-            healSubFrame = 0;
-            advanceHealIfDone(party);
-        }
-    }
-
-    private void advanceHealIfDone(List<Pokemon> party) {
-        if (healIndex >= party.size()) {
+        if (healFrame >= HEAL_TOTAL_FRAMES + HEAL_HOLD_FRAMES) {
             finishHeal();
-        } else {
-            seedHealForCurrent();
         }
     }
 

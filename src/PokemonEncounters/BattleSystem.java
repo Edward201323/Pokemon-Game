@@ -1,7 +1,10 @@
 package PokemonEncounters;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
+import java.awt.Stroke;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -86,6 +89,11 @@ public class BattleSystem {
     private Move postCatchEnemyMove; // a failed catch uses your turn — enemy attacks once after
     private BufferedImage ballImage;
 
+    // Switch state. While true, PokemonEncounter skips drawing the player sprite so the
+    // recall/throw animation reads as "the previous pokemon goes back, then the new one
+    // emerges" without a hard cut between sprites mid-message.
+    private boolean switchHidden;
+
     public BattleSystem(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
@@ -116,6 +124,17 @@ public class BattleSystem {
         catchSuccess = false;
         shakeCount = 0;
         postCatchEnemyMove = null;
+        switchHidden = false;
+        // Initial send-out: skip any fainted lead so we never put a 0-HP pokemon on the field.
+        int firstLive = firstLiveIndex();
+        if (firstLive < 0) {
+            // Shouldn't happen — blackout should fire before a new encounter — but
+            // bail out gracefully if it does.
+            activeIndex = 0;
+            phase = Phase.FINISHED;
+            return;
+        }
+        activeIndex = firstLive;
         // Seed prev* with current state so a key already held when the battle
         // begins must be released and re-pressed before it registers.
         prevZ = keyH.zPressed;
@@ -143,8 +162,38 @@ public class BattleSystem {
     // to skip drawing the wild sprite so the ball reads as "containing" it.
     public boolean enemyHiddenByBall() { return enemyHidden; }
 
-    private Pokemon player() { return gp.playerPokemon.pokemonEquipped.get(0); }
+    // Which party member is actually on the field. PokemonEncounter uses this so the
+    // sprite reflects switches (instead of always drawing pokemonEquipped.get(0)).
+    public Pokemon activePokemon() {
+        java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+        if (party.isEmpty()) return null;
+        int idx = Math.max(0, Math.min(activeIndex, party.size() - 1));
+        return party.get(idx);
+    }
+
+    // True while a switch is mid-animation: the outgoing pokemon has returned to its ball
+    // and the new one hasn't been thrown out yet. PokemonEncounter skips the player sprite
+    // for these frames so the active sprite doesn't snap from old to new.
+    public boolean playerHiddenForSwitch() { return switchHidden; }
+
+    // Active party slot — switching changes this instead of mutating the party list,
+    // so other systems (PC viewer, party menu) still see a consistent ordering.
+    private int activeIndex = 0;
+
+    private Pokemon player() { return gp.playerPokemon.pokemonEquipped.get(activeIndex); }
     private Pokemon enemy()  { return gp.wildPokemon; }
+
+    private int firstLiveIndex() { return firstLiveExcept(-1); }
+
+    private int firstLiveExcept(int skip) {
+        java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+        for (int i = 0; i < party.size(); i++) {
+            if (i == skip) continue;
+            Pokemon p = party.get(i);
+            if (p != null && p.currentHP > 0) return i;
+        }
+        return -1;
+    }
 
     // ----- frame update -----
 
@@ -177,9 +226,23 @@ public class BattleSystem {
         }
         if (phase == Phase.FAINT_ANIM) {
             faintFrame++;
-            // FAINT_FRAMES of sink, then POST_FAINT_HOLD of just sitting on the fainted line
-            // before we hand control back to PokemonEncounter for the fade.
-            if (faintFrame >= FAINT_FRAMES + POST_FAINT_HOLD) phase = Phase.FINISHED;
+            // FAINT_FRAMES of sink, then POST_FAINT_HOLD of just sitting on the fainted line.
+            if (faintFrame >= FAINT_FRAMES + POST_FAINT_HOLD) {
+                if (playerFainting) {
+                    // Force a switch if any teammate can still fight; otherwise FINISHED
+                    // (caller's blackout will pick this up).
+                    int next = firstLiveExcept(activeIndex);
+                    playerFainting = false;
+                    faintFrame = 0;
+                    if (next < 0) {
+                        phase = Phase.FINISHED;
+                    } else {
+                        openSwitchMenu(false);
+                    }
+                } else {
+                    phase = Phase.FINISHED;
+                }
+            }
             return;
         }
         if (phase == Phase.BALL_THROW) {
@@ -262,8 +325,59 @@ public class BattleSystem {
     private void handleActionInput() {
         if (justZ)      phase = Phase.CHOOSE_MOVE;                     // Fight
         else if (justX) startBallThrow();                              // Bag = throw Poke Ball
-        else if (justC) queue("You don't have another Pokemon!",   () -> phase = Phase.CHOOSE_ACTION);
+        else if (justC) {
+            // Pokemon: open the party selector. If no other teammate can fight, surface
+            // a message instead of opening an empty menu.
+            if (firstLiveExcept(activeIndex) < 0) {
+                queue("No other Pokemon can fight!", () -> phase = Phase.CHOOSE_ACTION);
+            } else {
+                openSwitchMenu(true);
+            }
+        }
         else if (justV) queue("You got away safely!",              () -> phase = Phase.FINISHED);
+    }
+
+    // Open the party menu in selection mode. Voluntary switches are cancellable and cost
+    // a turn (enemy gets a free attack); forced switches (after a faint) are not cancellable
+    // and the player picks back up at CHOOSE_ACTION.
+    private void openSwitchMenu(boolean voluntary) {
+        final int currentlyActive = activeIndex;
+        final Move enemyResponseMove = voluntary ? pickAIMove(enemy()) : null;
+        gp.openPlayerInventory.openInSelectionMode(
+            voluntary ? "Choose a Pokemon to send out." : "Choose your next Pokemon.",
+            voluntary, // cancellable only for voluntary switches
+            idx -> {
+                Pokemon p = gp.playerPokemon.pokemonEquipped.get(idx);
+                return p != null && p.currentHP > 0 && idx != currentlyActive;
+            },
+            idx -> performSwitch(idx, enemyResponseMove, !voluntary),
+            () -> phase = Phase.CHOOSE_ACTION
+        );
+    }
+
+    private void performSwitch(int newIndex, Move enemyMove, boolean forced) {
+        Pokemon old = gp.playerPokemon.pokemonEquipped.get(activeIndex);
+        activeIndex = newIndex;
+        Pokemon nw = player();
+        displayedPlayerHP = nw.currentHP;
+        // Player sprite stays hidden through the switch dialog; cleared right before the
+        // new pokemon is "on the field" so we don't flash the previous sprite or hard-cut.
+        switchHidden = true;
+        if (forced) {
+            // Forced switch (post-faint): no "Come back" — the previous pokemon already
+            // dropped during FAINT_ANIM. Just throw the new one out.
+            queue("Go! " + nw.name + "!", () -> {
+                switchHidden = false;
+                phase = Phase.CHOOSE_ACTION;
+            });
+        } else {
+            queue("Come back, " + old.name + "!", null);
+            queue("Go! " + nw.name + "!", () -> {
+                switchHidden = false;
+                doEnemyAttack(enemyMove);
+                then(this::afterEnemyAttack);
+            });
+        }
     }
 
     private void handleMoveInput() {
@@ -490,11 +604,9 @@ public class BattleSystem {
     // ----- drawing -----
 
     public void draw(Graphics2D g2, BufferedImage[] encounterAssets, Font bigFont, Font smallFont) {
-        // Rect dimensions match the green pill baked into 3_EnemyHpBar / 4_MyHpBar so the
-        // dark background fully covers the static green; the colored fill then drains over it.
-        drawHpFill(g2, displayedEnemyHP,  enemy().maxHP,  193, 113, 163, 9);
-        drawHpFill(g2, displayedPlayerHP, player().maxHP, 609, 391, 171, 9);
-        drawPlayerHpText(g2, smallFont);
+        // Custom HP panels reflect the *active* pokemon (post-switch sprites + stats).
+        drawEnemyPanel(g2, enemy(), displayedEnemyHP, smallFont);
+        drawPlayerPanel(g2, player(), displayedPlayerHP, smallFont);
 
         if (phase == Phase.CHOOSE_ACTION) {
             drawActionMenu(g2, encounterAssets, bigFont);
@@ -502,32 +614,89 @@ public class BattleSystem {
             drawMoveMenu(g2, encounterAssets, smallFont);
         } else if ((phase == Phase.MESSAGE || phase == Phase.FAINT_ANIM || phase == Phase.FINISHED)
                    && !currentMessage.isEmpty()) {
-            drawDialog(g2, currentMessage, bigFont);
+            drawDialogPanel(g2, currentMessage, bigFont, gp.screenWidth, gp.screenHeight);
         }
         // The ball overlays everything else (incl. the dialog box on "Gotcha!") whenever it's in play.
         drawBall(g2);
     }
 
-    private void drawHpFill(Graphics2D g2, double current, int max, int x, int y, int w, int h) {
-        if (max <= 0) return;
-        double ratio = Math.max(0.0, Math.min(1.0, current / (double) max));
-        int filled = (int) Math.round(w * ratio);
-        Color c;
-        if (ratio > 0.5) c = new Color(80, 200, 80);
-        else if (ratio > 0.2) c = new Color(230, 200, 60);
-        else c = new Color(220, 60, 60);
-        g2.setColor(new Color(40, 40, 40));
-        g2.fillRect(x, y, w, h);
-        g2.setColor(c);
-        g2.fillRect(x, y, filled, h);
+    // ---- Custom HP panels (static so PokemonEncounter can call them pre-battle too). ----
+
+    // Enemy panel: top-left, name + Lv + HP bar (no number text — matches mainline games).
+    public static void drawEnemyPanel(Graphics2D g2, Pokemon enemy, double displayedHp, Font font) {
+        if (enemy == null) return;
+        int x = 32, y = 32, w = 370, h = 92;
+        drawPanelBackground(g2, x, y, w, h);
+        if (font != null) g2.setFont(font);
+        g2.setColor(Color.white);
+        g2.drawString(enemy.name, x + 20, y + 32);
+        String lv = "Lv " + enemy.level;
+        int lvW = g2.getFontMetrics().stringWidth(lv);
+        g2.setColor(new Color(220, 230, 240));
+        g2.drawString(lv, x + w - lvW - 18, y + 32);
+        drawHpRow(g2, displayedHp, enemy.maxHP, x + 20, y + 58, w - 40, 12, font, false);
     }
 
-    private void drawPlayerHpText(Graphics2D g2, Font small) {
-        g2.setFont(small);
-        g2.setColor(Color.black);
-        Pokemon p = player();
-        g2.drawString((int) Math.ceil(displayedPlayerHP) + "/" + p.maxHP, 640, 428);
+    // Player panel: center-right, includes the HP number text.
+    public static void drawPlayerPanel(Graphics2D g2, Pokemon p, double displayedHp, Font font) {
+        if (p == null) return;
+        int x = 450, y = 300, w = 380, h = 130;
+        drawPanelBackground(g2, x, y, w, h);
+        if (font != null) g2.setFont(font);
+        g2.setColor(Color.white);
+        g2.drawString(p.name, x + 20, y + 36);
+        String lv = "Lv " + p.level;
+        int lvW = g2.getFontMetrics().stringWidth(lv);
+        g2.setColor(new Color(220, 230, 240));
+        g2.drawString(lv, x + w - lvW - 18, y + 36);
+        drawHpRow(g2, displayedHp, p.maxHP, x + 20, y + 64, w - 40, 14, font, true);
     }
+
+    private static void drawPanelBackground(Graphics2D g2, int x, int y, int w, int h) {
+        g2.setPaint(new GradientPaint(0, y, new Color(22, 32, 46, 235),
+                                      0, y + h, new Color(10, 16, 26, 235)));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        Stroke prev = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(90, 130, 170, 200));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+        g2.setColor(new Color(140, 180, 220, 60));
+        g2.drawRoundRect(x + 3, y + 3, w - 6, h - 6, 14, 14);
+        g2.setStroke(prev);
+    }
+
+    private static void drawHpRow(Graphics2D g2, double current, int max,
+                                   int x, int y, int w, int h, Font font, boolean withText) {
+        // Label
+        if (font != null) g2.setFont(font);
+        g2.setColor(new Color(180, 220, 255));
+        g2.drawString("HP", x, y + h - 1);
+        int labelW = 38;
+        int barX = x + labelW;
+        int barW = w - labelW;
+        // Track + fill
+        if (max > 0) {
+            double ratio = Math.max(0.0, Math.min(1.0, current / (double) max));
+            int filled = (int) Math.round(barW * ratio);
+            Color fill;
+            if (ratio > 0.5)      fill = new Color(80, 200, 80);
+            else if (ratio > 0.2) fill = new Color(230, 200, 60);
+            else                  fill = new Color(220, 60, 60);
+            g2.setColor(new Color(20, 25, 32));
+            g2.fillRoundRect(barX, y, barW, h, h, h);
+            if (filled > 0) {
+                g2.setColor(fill);
+                g2.fillRoundRect(barX, y, filled, h, h, h);
+            }
+        }
+        if (withText) {
+            String hp = (int) Math.ceil(current) + " / " + max;
+            int hpW = g2.getFontMetrics().stringWidth(hp);
+            g2.setColor(Color.white);
+            g2.drawString(hp, x + w - hpW, y + h + 22);
+        }
+    }
+
 
     private void drawActionMenu(Graphics2D g2, BufferedImage[] assets, Font font) {
         g2.drawImage(assets[1], 500, 497, 364, 175, null);
@@ -606,11 +775,30 @@ public class BattleSystem {
         g2.setClip(oldClip);
     }
 
-    private void drawDialog(Graphics2D g2, String text, Font font) {
-        g2.setFont(font);
-        g2.setColor(Color.black);
-        g2.drawString(text, 40, gp.screenHeight - 110);
-        g2.setColor(Color.white);
-        g2.drawString(text, 38, gp.screenHeight - 112);
+    // Custom dialog panel for battle messages — rounded, subtle gradient, soft border.
+    // Public + static so PokemonEncounter can render its pre-battle dialog with the same look.
+    public static void drawDialogPanel(Graphics2D g2, String text, Font font,
+                                        int screenWidth, int screenHeight) {
+        int panelH = 150;
+        int margin = 16;
+        int x = margin;
+        int y = screenHeight - panelH - 8;
+        int w = screenWidth - margin * 2;
+
+        g2.setPaint(new GradientPaint(0, y, new Color(18, 28, 40, 235),
+                                      0, y + panelH, new Color(8, 14, 22, 235)));
+        g2.fillRoundRect(x, y, w, panelH, 22, 22);
+
+        Stroke prev = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(90, 130, 170, 200));
+        g2.drawRoundRect(x, y, w, panelH, 22, 22);
+        g2.setColor(new Color(140, 180, 220, 70));
+        g2.drawRoundRect(x + 3, y + 3, w - 6, panelH - 6, 18, 18);
+        g2.setStroke(prev);
+
+        if (font != null) g2.setFont(font);
+        g2.setColor(new Color(245, 250, 255));
+        g2.drawString(text, x + 32, y + 64);
     }
 }
