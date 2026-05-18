@@ -15,15 +15,21 @@ public class PlayerPokemon {
 
     public PlayerPokemon(GamePanel gp) {
         this.gp = gp;
-        addPokemon("Ditto", 100);
+        addPokemon("Mewtwo", 100);
     }
 
     public void addPokemon(String pokemonName, int level) {
         addToInventory(getPokemon.findPokemon(pokemonName, level));
     }
 
+    // A caught pokemon goes to the party. If the party is already full we discard it for now
+    // (no PC/box UI yet); revisit when storage lands.
     public void addPokemonCaught() {
-        addToInventory(gp.wildPokemon);
+        Pokemon pokemon = gp.wildPokemon;
+        if (pokemon == null) return;
+        if (pokemonEquipped.size() < PARTY_LIMIT) {
+            pokemonEquipped.add(pokemon);
+        }
     }
 
     private void addToInventory(Pokemon pokemon) {
