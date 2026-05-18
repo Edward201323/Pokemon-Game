@@ -64,6 +64,13 @@ public class GetPokemon {
         return pokemon;
     }
 
+    // Pick a random pokemon from the full Pokedex CSV. Uniform across every species.
+    public Pokemon findRandomPokemon(int level) {
+        String[] names = CACHE.keySet().toArray(new String[0]);
+        if (names.length == 0) return null;
+        return findPokemon(names[RNG.nextInt(names.length)], level);
+    }
+
     private void assignPokemonInfo(Pokemon pokemon, String[] row, int level) {
         pokemon.name = row[0];
         pokemon.level = level;
@@ -72,13 +79,27 @@ public class GetPokemon {
         pokemon.NameInFile = nameInFile + ".png";
         pokemon.NameInFileGif = nameInFile + ".gif";
 
-        pokemon.hp = Integer.parseInt(row[1]);
-        pokemon.attack = Integer.parseInt(row[2]);
-        pokemon.defense = Integer.parseInt(row[3]);
-        pokemon.spAttack = Integer.parseInt(row[4]);
-        pokemon.spDef = Integer.parseInt(row[5]);
-        pokemon.speed = Integer.parseInt(row[6]);
+        int baseHP   = Integer.parseInt(row[1]);
+        int baseAtk  = Integer.parseInt(row[2]);
+        int baseDef  = Integer.parseInt(row[3]);
+        int baseSpA  = Integer.parseInt(row[4]);
+        int baseSpD  = Integer.parseInt(row[5]);
+        int baseSpd  = Integer.parseInt(row[6]);
 
+        // IVs must be assigned before scaling so they fold into the formula.
+        assignIVs(pokemon);
+
+        // Standard Pokemon stat formula (no nature, EVs default 0):
+        //   HP    = floor( (2*base + IV + EV/4) * level / 100 ) + level + 10
+        //   other = floor( (2*base + IV + EV/4) * level / 100 ) + 5
+        pokemon.hp        = scaledHP(baseHP,  pokemon.ivHP,       pokemon.evHP,       level);
+        pokemon.attack    = scaledStat(baseAtk, pokemon.ivAttack,   pokemon.evAttack,   level);
+        pokemon.defense   = scaledStat(baseDef, pokemon.ivDefense,  pokemon.evDefense,  level);
+        pokemon.spAttack  = scaledStat(baseSpA, pokemon.ivSpAttack, pokemon.evSpAttack, level);
+        pokemon.spDef     = scaledStat(baseSpD, pokemon.ivSpDef,    pokemon.evSpDef,    level);
+        pokemon.speed     = scaledStat(baseSpd, pokemon.ivSpeed,    pokemon.evSpeed,    level);
+
+        pokemon.maxHP = pokemon.hp;
         pokemon.currentHP = pokemon.hp;
         pokemon.currentAttack = pokemon.attack;
         pokemon.currentDefense = pokemon.defense;
@@ -92,6 +113,8 @@ public class GetPokemon {
         pokemon.type2 = row[8];
         pokemon.currentType1 = pokemon.type1;
         pokemon.currentType2 = pokemon.type2;
+
+        pokemon.moves = Moves.getMoves(pokemon.type1, pokemon.type2);
 
         pokemon.captureRate = Integer.parseInt(row[9]);
         pokemon.experienceGrowth = Integer.parseInt(row[10]);
@@ -119,9 +142,15 @@ public class GetPokemon {
         assignAbility(pokemon, row);
 
         pokemon.shiny = RNG.nextDouble() <= 0.0005;
+        // IVs were already assigned above before the stat scaling step.
+    }
 
-        assignIVs(pokemon);
-        // EVs initialize to 0 by default
+    private static int scaledHP(int base, int iv, int ev, int level) {
+        return ((2 * base + iv + ev / 4) * level / 100) + level + 10;
+    }
+
+    private static int scaledStat(int base, int iv, int ev, int level) {
+        return ((2 * base + iv + ev / 4) * level / 100) + 5;
     }
 
     private void assignAbility(Pokemon pokemon, String[] row) {

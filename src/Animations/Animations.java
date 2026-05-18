@@ -17,12 +17,12 @@ public class Animations {
  
     public void FadeIn(Graphics2D g2){
         counterA++;
-        if(counterA * 3 <= 255){
-            Color c = new Color(0, 0, 0, (counterA*3));
+        if(counterA * 6 <= 255){
+            Color c = new Color(0, 0, 0, (counterA*6));
             g2.setColor(c);
             g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
         }
-        if(counterA * 3 > 255){
+        if(counterA * 6 > 255){
             Color c = new Color(0, 0, 0, 255);
             g2.setColor(c);
             g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);

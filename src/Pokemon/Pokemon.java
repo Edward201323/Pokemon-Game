@@ -7,6 +7,10 @@ public class Pokemon {
 
     public int hp, attack, defense, spAttack, spDef, speed;
 
+    public int maxHP;
+
+    public java.util.List<Move> moves;
+
     public String type1, type2;
 
     public String currentType1, currentType2;

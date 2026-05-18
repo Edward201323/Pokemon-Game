@@ -36,22 +36,27 @@ public class PokemonEncounter {
  
     boolean ballThrown = false;
     boolean endEncounter = false;
- 
+
     boolean chooseAction = false;
- 
+
+    BattleSystem battle;
+    boolean battleStarted = false;
+
     public PokemonEncounter(GamePanel gp, KeyHandler keyH){
         this.gp = gp;
         this.keyH = keyH;
         this.animations = new Animations(this.gp);
         this.getPokemonImages = new GetPokemonImages();
- 
+
         getFont();
- 
+
         this.encounterBackgrounds = new BufferedImage[15];
         getEncounterBackgrounds();
- 
+
         this.encounterAssets = new BufferedImage[15];
         getEncounterAssets();
+
+        this.battle = new BattleSystem(gp, keyH);
     }
  
  
@@ -140,7 +145,7 @@ public class PokemonEncounter {
         g2.drawString(gp.wildPokemon.name, 85, 97);
  
         //Level
-        g2.drawString(Integer.toString(gp.wildPokemon.level), 338, 97);
+        drawLevel(gp.wildPokemon.level, 338, 97);
  
         if(counterB<=150){
             //Bottom UI Bar
@@ -221,15 +226,36 @@ public class PokemonEncounter {
     private void drawPokemonEncounter(){
         //background
         g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight-175, null);
- 
-        //Enemy Pokemon
-        g2.drawImage(getPokemonImages.getPokemonFront(gp.wildPokemon), 600, 150, 175, 175, null);
- 
-        //My Pokemon
-        g2.drawImage(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)), 25, 235, 325, 325, null);
- 
- 
+
+        drawPokemonSprite(getPokemonImages.getPokemonFront(gp.wildPokemon),
+                          600, 150, 175, 175, battle.enemyFaintFraction());
+        drawPokemonSprite(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)),
+                          25, 235, 325, 325, battle.playerFaintFraction());
+
         drawEncounterAssets();
+    }
+
+    // Right-align the level to where a 2-digit number ends at `leftX`, so 1/2/3-digit
+    // levels each anchor differently and "100" doesn't push past the UI bar.
+    private void drawLevel(int level, int leftX, int y){
+        java.awt.FontMetrics fm = g2.getFontMetrics();
+        int rightEdge = leftX + fm.stringWidth("99");
+        String s = Integer.toString(level);
+        g2.drawString(s, rightEdge - fm.stringWidth(s), y);
+    }
+
+    // While a Pokemon is fainting, translate it downward by `fraction * height` and clip to its
+    // original rect so it appears to sink into the ground.
+    private void drawPokemonSprite(BufferedImage img, int x, int y, int w, int h, double fraction){
+        if (fraction <= 0){
+            g2.drawImage(img, x, y, w, h, null);
+            return;
+        }
+        java.awt.Shape oldClip = g2.getClip();
+        g2.setClip(x, y, w, h);
+        int dy = (int) Math.round(fraction * h);
+        g2.drawImage(img, x, y + dy, w, h, null);
+        g2.setClip(oldClip);
     }
  
  
@@ -264,8 +290,8 @@ public class PokemonEncounter {
         g2.drawString(gp.playerPokemon.pokemonEquipped.get(0).name, 500, 376);
  
         //Levels
-        g2.drawString(Integer.toString(gp.wildPokemon.level), 338, 97);
-        g2.drawString(Integer.toString(gp.playerPokemon.pokemonEquipped.get(0).level), 762, 376);
+        drawLevel(gp.wildPokemon.level, 338, 97);
+        drawLevel(gp.playerPokemon.pokemonEquipped.get(0).level, 762, 376);
  
         //Draw ui bar
         if(counterA*71 < 497){
@@ -278,42 +304,24 @@ public class PokemonEncounter {
  
     private void EncounterText(){
         if(chooseAction == true){
-            g2.drawImage(encounterAssets[1], 500, 497, 364, 175,  null);
-            g2.setFont(MaruMonica);
-            g2.setColor(Color.black);
- 
-            g2.drawString("What will "+gp.playerPokemon.pokemonEquipped.get(0).name, 40, gp.screenHeight-110);
-            g2.drawString("do?", 40, gp.screenHeight-70);
- 
-            g2.drawString("(Z)", 643, gp.screenHeight-99);
-            g2.drawString("(X)", 780, gp.screenHeight-99);
-            g2.drawString("(C)", 678, gp.screenHeight-38);
-            g2.drawString("(V)", 780, gp.screenHeight-38);
- 
-            g2.setColor(Color.white);
- 
-            g2.drawString("What will "+gp.playerPokemon.pokemonEquipped.get(0).name, 38, gp.screenHeight-112);
-            g2.drawString("do?", 38, gp.screenHeight-72);
-        }
- 
-        if(keyH.zPressed == true || keyH.xPressed == true || keyH.cPressed == true || keyH.vPressed == true){
-            if(keyH.vPressed == true){
+            if(!battleStarted){
+                battle.start();
+                battleStarted = true;
+            }
+            battle.update();
+            battle.draw(g2, encounterAssets, MaruMonica, MaruMonicaSmall);
+            if(battle.isFinished()){
                 chooseAction = false;
                 endEncounter = true;
+                counterB = 0;
             }
         }
- 
+
         if(endEncounter == true){
+            // Keep the battle's final HP bars + closing message on screen while we count to the fade.
+            battle.draw(g2, encounterAssets, MaruMonica, MaruMonicaSmall);
             counterB++;
- 
-            g2.setFont(MaruMonica);
-            g2.setColor(Color.black);
-            g2.drawString("You got away safely!", 40, gp.screenHeight-110);     
- 
-            g2.setColor(Color.white);
-            g2.drawString("You got away safely!", 38, gp.screenHeight-112);
- 
-            if(counterB >= 70){
+            if(counterB >= 20){
                 drawBeforeEncounterEnd();
             }
         }
@@ -322,7 +330,7 @@ public class PokemonEncounter {
     private void drawBeforeEncounterEnd(){
         counterC++;
         animations.FadeIn(g2);
-        if(counterC == 90){
+        if(counterC == 50){
             endEncounter();
         }
     }
@@ -340,7 +348,13 @@ public class PokemonEncounter {
         ballThrown = false;
         endEncounter = false;
         chooseAction = false;
- 
+        battleStarted = false;
+
+        // Heal the party between encounters so the next battle starts fresh.
+        for(Pokemon p : gp.playerPokemon.pokemonEquipped){
+            p.currentHP = p.maxHP;
+        }
+
         counterA = 0;
         counterB = 0;
         counterC = 0;

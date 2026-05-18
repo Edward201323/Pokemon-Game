@@ -1,6 +1,5 @@
 package Main;
 import java.io.File;
-import java.net.URL;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
@@ -9,16 +8,16 @@ import javax.sound.sampled.Clip;
 // is not clobbered when another Sound plays a sound effect.
 public class Sound {
     private Clip clip;
-    private final URL[] musicUrls = new URL[30];
-    private final URL[] seUrls = new URL[2];
+    private final File[] musicFiles = new File[30];
+    private final File[] seFiles = new File[2];
     private long timeStopped;
 
     public Sound() {
-        loadFiles("./src/res/music", "/res/music/", musicUrls);
-        loadFiles("./src/res/SoundEffects", "/res/SoundEffects/", seUrls);
+        loadFiles("./src/res/music", musicFiles);
+        loadFiles("./src/res/SoundEffects", seFiles);
     }
 
-    private void loadFiles(String dirPath, String resourcePrefix, URL[] dest) {
+    private void loadFiles(String dirPath, File[] dest) {
         File directory = new File(dirPath);
         File[] files = directory.listFiles();
         if (files == null) return;
@@ -30,7 +29,7 @@ public class Sound {
             try {
                 int index = Integer.parseInt(fileName.substring(0, underscore));
                 if (index >= 0 && index < dest.length) {
-                    dest[index] = getClass().getResource(resourcePrefix + fileName);
+                    dest[index] = file;
                 }
             } catch (NumberFormatException ignored) {
             }
@@ -38,18 +37,18 @@ public class Sound {
     }
 
     public void setMusicFile(int i) {
-        openClip(musicUrls[i]);
+        openClip(musicFiles[i]);
     }
 
     public void setSEFile(int i) {
-        openClip(seUrls[i]);
+        openClip(seFiles[i]);
     }
 
-    private void openClip(URL url) {
-        if (url == null) return;
+    private void openClip(File file) {
+        if (file == null) return;
         try {
             if (clip != null) clip.close();
-            AudioInputStream audioStream = AudioSystem.getAudioInputStream(url);
+            AudioInputStream audioStream = AudioSystem.getAudioInputStream(file);
             clip = AudioSystem.getClip();
             clip.open(audioStream);
         } catch (Exception e) {
