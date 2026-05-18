@@ -116,6 +116,14 @@ public class GetPokemon {
         int baseSpD  = Integer.parseInt(row[5]);
         int baseSpd  = Integer.parseInt(row[6]);
 
+        // Stash base stats on the Pokemon so it can recalc on level-up later.
+        pokemon.baseHP        = baseHP;
+        pokemon.baseAttack    = baseAtk;
+        pokemon.baseDefense   = baseDef;
+        pokemon.baseSpAttack  = baseSpA;
+        pokemon.baseSpDef     = baseSpD;
+        pokemon.baseSpeed     = baseSpd;
+
         // IVs must be assigned before scaling so they fold into the formula.
         assignIVs(pokemon);
 
@@ -148,6 +156,9 @@ public class GetPokemon {
 
         pokemon.captureRate = Integer.parseInt(row[9]);
         pokemon.experienceGrowth = Integer.parseInt(row[10]);
+        // Seed totalExp to the curve value for the starting level so the pokemon doesn't
+        // immediately level up or owe XP. Subsequent gains accumulate from here.
+        pokemon.totalExp = ExpCurves.expAtLevel(level, pokemon.experienceGrowth);
 
         pokemon.percentMale = Double.parseDouble(row[11]);
         if (pokemon.percentMale < 0) {

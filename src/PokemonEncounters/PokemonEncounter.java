@@ -16,7 +16,7 @@ public class PokemonEncounter {
     // Player pokemon sits lower-left, enemy upper-right, trainer overlaps the player's
     // spot (so the throw animation lines up with where the new pokemon emerges).
     public static final int PLAYER_X = 25,  PLAYER_Y = 250, PLAYER_W = 360, PLAYER_H = 360;
-    public static final int ENEMY_X  = 575, ENEMY_Y  = 180,  ENEMY_W  = 230, ENEMY_H  = 230;
+    public static final int ENEMY_X  = 550, ENEMY_Y  = 185,  ENEMY_W  = 230, ENEMY_H  = 230;
     public static final int TRAINER_X = 70, TRAINER_Y = 270, TRAINER_W = 260, TRAINER_H = 260;
 
     GamePanel gp;

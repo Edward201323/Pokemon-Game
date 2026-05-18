@@ -12,6 +12,7 @@ import java.util.function.IntPredicate;
 
 import Main.GamePanel;
 import Main.KeyHandler;
+import Pokemon.ExpCurves;
 import Pokemon.GetPokemonImages;
 import Pokemon.Pokemon;
 
@@ -50,6 +51,12 @@ public class OpenPlayerInventory {
     private int cursor;
     private int returnState;
     private String prompt;
+
+    // Regular P-menu state: a cursor + a "swap source" so the player can reorder party
+    // members. First Enter/Z picks the source (slot lights up blue), second Enter/Z on
+    // another slot swaps them. X cancels a pending source, or closes the menu otherwise.
+    private int viewCursor;
+    private int swapSource = -1;
 
     public OpenPlayerInventory(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
@@ -141,15 +148,66 @@ public class OpenPlayerInventory {
         }
         boolean justP = keyH.pPressed && !prevP;
         boolean justI = keyH.iPressed && !prevI;
-        prevP = keyH.pPressed;
-        prevI = keyH.iPressed;
+        boolean justConfirm = (keyH.enterPressed && !prevEnter) || (keyH.zPressed && !prevZ);
+        boolean justX = keyH.xPressed && !prevX;
+        boolean justUp = keyH.upPressed && !prevUp;
+        boolean justDown = keyH.downPressed && !prevDown;
+        boolean justLeft = keyH.leftPressed && !prevLeft;
+        boolean justRight = keyH.rightPressed && !prevRight;
+        prevP = keyH.pPressed; prevI = keyH.iPressed;
+        prevZ = keyH.zPressed; prevX = keyH.xPressed;
+        prevEnter = keyH.enterPressed;
+        prevUp = keyH.upPressed; prevDown = keyH.downPressed;
+        prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
 
         if (gp.gameState == gp.playState) {
-            if (justP)      gp.gameState = gp.InventoryPokemonState;
-            else if (justI) gp.gameState = gp.InventoryBagState;
-        } else if (gp.gameState == gp.InventoryPokemonState && justP) {
+            if (justP) {
+                gp.gameState = gp.InventoryPokemonState;
+                viewCursor = 0;
+                swapSource = -1;
+            } else if (justI) {
+                gp.gameState = gp.InventoryBagState;
+            }
+            return;
+        }
+        if (gp.gameState == gp.InventoryBagState && justI) {
             gp.gameState = gp.playState;
-        } else if (gp.gameState == gp.InventoryBagState && justI) {
+            return;
+        }
+        if (gp.gameState != gp.InventoryPokemonState) return;
+
+        // P-menu interaction: arrow keys move the cursor, Enter/Z picks a swap source
+        // then a swap target, X cancels the pending source or closes the menu, P closes.
+        int n = gp.playerPokemon.pokemonEquipped.size();
+        if (justUp && viewCursor >= 2) viewCursor -= 2;
+        if (justDown && viewCursor + 2 < n) viewCursor += 2;
+        if (justLeft && viewCursor % 2 == 1) viewCursor -= 1;
+        if (justRight && viewCursor % 2 == 0 && viewCursor + 1 < n) viewCursor += 1;
+
+        if (justConfirm) {
+            if (swapSource < 0) {
+                swapSource = viewCursor;
+            } else if (swapSource != viewCursor) {
+                // Swap positions in the party list.
+                java.util.ArrayList<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+                Pokemon a = party.get(swapSource);
+                Pokemon b = party.get(viewCursor);
+                party.set(swapSource, b);
+                party.set(viewCursor, a);
+                swapSource = -1;
+            } else {
+                // Re-confirmed the same slot: deselect.
+                swapSource = -1;
+            }
+            return;
+        }
+        if (justX) {
+            if (swapSource >= 0) { swapSource = -1; return; }
+            gp.gameState = gp.playState;
+            return;
+        }
+        if (justP) {
+            swapSource = -1;
             gp.gameState = gp.playState;
         }
     }
@@ -194,19 +252,23 @@ public class OpenPlayerInventory {
         g2.setColor(new Color(230, 240, 250));
         g2.drawString("PARTY", 32, 60);
 
-        // Header hint at top-right: either the selection prompt or the close key.
+        // Header hint at top-right.
         if (promptFont != null) g2.setFont(promptFont);
+        String hint;
+        Color hintColor;
         if (selectionMode && prompt != null) {
-            g2.setColor(new Color(255, 220, 60));
-            String text = prompt + (cancellable ? "   (X to cancel)" : "");
-            int tw = g2.getFontMetrics().stringWidth(text);
-            g2.drawString(text, gp.screenWidth - tw - 32, 56);
+            hint = prompt + (cancellable ? "   (X to cancel)" : "");
+            hintColor = new Color(255, 220, 60);
+        } else if (swapSource >= 0) {
+            hint = "Pick a slot to swap with   (X cancel)";
+            hintColor = new Color(120, 200, 255);
         } else {
-            g2.setColor(new Color(160, 175, 190));
-            String hint = "P to close";
-            int tw = g2.getFontMetrics().stringWidth(hint);
-            g2.drawString(hint, gp.screenWidth - tw - 32, 56);
+            hint = "Enter swap   X close";
+            hintColor = new Color(160, 175, 190);
         }
+        g2.setColor(hintColor);
+        int tw = g2.getFontMetrics().stringWidth(hint);
+        g2.drawString(hint, gp.screenWidth - tw - 32, 56);
 
         int gridW = CARD_W * 2 + GAP_X;
         int startX = (gp.screenWidth - gridW) / 2;
@@ -225,8 +287,9 @@ public class OpenPlayerInventory {
 
     private void drawCard(Graphics2D g2, Pokemon p, int x, int y, int w, int h, int slot) {
         boolean fainted = p.currentHP <= 0;
-        boolean cursorHere = selectionMode && slot == cursor;
+        boolean cursorHere = selectionMode ? slot == cursor : slot == viewCursor;
         boolean selectable = !selectionMode || isSlotSelectable(slot);
+        boolean swapPicked = !selectionMode && slot == swapSource;
 
         // Card panel.
         g2.setColor(fainted ? new Color(60, 30, 32, 230) : new Color(30, 45, 60, 230));
@@ -239,11 +302,22 @@ public class OpenPlayerInventory {
             g2.fillRoundRect(x, y, 6, h, 6, 6); // little accent strip on the left
         }
 
-        // Border (gold when cursor is here, dim slate otherwise).
+        // Border: blue when this is the picked swap source, gold for the cursor, dim slate otherwise.
         Stroke oldStroke = g2.getStroke();
-        g2.setStroke(new BasicStroke(cursorHere ? 4f : 2f));
-        g2.setColor(cursorHere ? new Color(255, 220, 60)
-                               : new Color(80, 110, 140, 200));
+        Color borderColor;
+        float borderW;
+        if (swapPicked) {
+            borderColor = new Color(120, 200, 255);
+            borderW = 4f;
+        } else if (cursorHere) {
+            borderColor = new Color(255, 220, 60);
+            borderW = 4f;
+        } else {
+            borderColor = new Color(80, 110, 140, 200);
+            borderW = 2f;
+        }
+        g2.setStroke(new BasicStroke(borderW));
+        g2.setColor(borderColor);
         g2.drawRoundRect(x, y, w, h, 18, 18);
         g2.setStroke(oldStroke);
 
@@ -266,9 +340,9 @@ public class OpenPlayerInventory {
         g2.setColor(new Color(190, 200, 210));
         g2.drawString("Lv " + p.level, textX, y + 64);
 
-        // HP bar.
+        // HP bar — sits higher than before to leave room for the EXP bar underneath.
         int barX = textX;
-        int barY = y + h - 52;
+        int barY = y + h - 78;
         int barW = (x + w) - barX - 16;
         int barH = 12;
         drawHpBar(g2, p, barX, barY, barW, barH);
@@ -277,6 +351,24 @@ public class OpenPlayerInventory {
         if (metaFont != null) g2.setFont(metaFont);
         g2.setColor(Color.white);
         g2.drawString(p.currentHP + "/" + p.maxHP, barX, barY + barH + 18);
+
+        // EXP bar (blue) along the bottom edge of the card.
+        int expY = y + h - 18;
+        int expH = 6;
+        if (metaFont != null) g2.setFont(metaFont);
+        g2.setColor(new Color(150, 200, 255));
+        g2.drawString("EXP", barX, expY - 3);
+        int expLabelW = 56;
+        int expBarX = barX + expLabelW;
+        int expBarW = (x + w) - expBarX - 16;
+        double frac = ExpCurves.levelProgress(p);
+        int expFilled = (int) Math.round(expBarW * frac);
+        g2.setColor(new Color(20, 25, 32));
+        g2.fillRoundRect(expBarX, expY, expBarW, expH, expH, expH);
+        if (expFilled > 0) {
+            g2.setColor(new Color(80, 150, 240));
+            g2.fillRoundRect(expBarX, expY, expFilled, expH, expH, expH);
+        }
 
         // FAINTED tag.
         if (fainted && faintedFont != null) {

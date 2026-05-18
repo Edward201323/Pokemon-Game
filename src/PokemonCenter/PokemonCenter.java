@@ -440,7 +440,7 @@ public class PokemonCenter {
         if (smallFont != null) g2.setFont(smallFont);
         g2.setColor(new Color(160, 160, 160));
         g2.drawString((pcIndex + 1) + " / " + n, 48, gp.screenHeight - 32);
-        g2.drawString("Up/Down  -  Z or Esc to exit", 48, gp.screenHeight - 60);
+        g2.drawString("X to exit  -  Z to swap", 48, gp.screenHeight - 60);
 
         // Right: large sprite of selected pokemon, centered in the right panel.
         Pokemon sel = pcCache.get(pcIndex);

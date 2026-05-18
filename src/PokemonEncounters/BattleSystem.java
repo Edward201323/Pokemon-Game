@@ -17,6 +17,7 @@ import javax.imageio.ImageIO;
 
 import Main.GamePanel;
 import Main.KeyHandler;
+import Pokemon.ExpCurves;
 import Pokemon.Move;
 import Pokemon.Pokemon;
 import Pokemon.TypeChart;
@@ -38,9 +39,10 @@ public class BattleSystem {
     private static final int WOBBLE_FRAMES = 38;
     private static final int POST_WOBBLE_HOLD = 18;
     // Where the ball ends up on the enemy and where it starts (lower-left, off-trainer).
-    // Land coordinates match the enemy sprite footprint (see PokemonEncounter.ENEMY_*).
+    // Targets the enemy sprite's *foot* region (lower portion of ENEMY_*) so the ball
+    // visually sits at the pokemon's feet rather than its head/center.
     private static final int BALL_START_X = 140, BALL_START_Y = 600;
-    private static final int BALL_LAND_X  = 690, BALL_LAND_Y  = 195;
+    private static final int BALL_LAND_X  = 665, BALL_LAND_Y  = 370;
     private static final int BALL_DRAW_SIZE = 56;
     private static final double THROW_ARC_HEIGHT = 240.0;
     private static final double WOBBLE_MAX_TILT = 0.40; // radians (~23 degrees)
@@ -253,13 +255,20 @@ public class BattleSystem {
                         openSwitchMenu(false);
                     }
                 } else {
-                    phase = Phase.FINISHED;
+                    // Enemy fainted — award EXP to the active pokemon (with possible
+                    // level-up) and queue the messages before transitioning to FINISHED.
+                    giveExpAndFinish();
                 }
             }
             return;
         }
         if (phase == Phase.SWITCH_THROW) {
             switchFrame++;
+            // Throw SFX fires partway through, matching drawDawnThrowBall's beat at the
+            // start of pose 2 (where the trainer releases the ball).
+            if (switchFrame == SWITCH_POSE_FRAMES) {
+                gp.playSE(0);
+            }
             if (switchFrame >= SWITCH_TOTAL_FRAMES) {
                 Runnable r = afterSwitchThrow;
                 afterSwitchThrow = null;
@@ -412,6 +421,55 @@ public class BattleSystem {
         phase = Phase.SWITCH_THROW;
         switchFrame = 0;
         afterSwitchThrow = after;
+    }
+
+    // After the enemy's faint animation, award EXP to every non-fainted party member
+    // (Gen 6+ Exp Share — everyone gets the full amount). Hard-caps the level at 100
+    // (totalExp clamped to the curve max). Dialog is a single summary line plus a
+    // per-pokemon level-up line for anyone who advanced.
+    private void giveExpAndFinish() {
+        int gain = ExpCurves.expGained(enemy().expGiven, enemy().level);
+        java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+        java.util.List<Pokemon> leveledUp = new java.util.ArrayList<>();
+        int sharedCount = 0;
+        for (Pokemon p : party) {
+            if (p == null || p.currentHP <= 0) continue;
+            if (p.level >= 100) continue; // already maxed, no XP to gain
+            p.totalExp += gain;
+            int curveMax = p.experienceGrowth;
+            // Clamp so totalExp can't grow past the curve max once at level 100.
+            if (p.totalExp > curveMax) p.totalExp = curveMax;
+            int origLevel = p.level;
+            while (p.level < 100
+                    && p.totalExp >= ExpCurves.expAtLevel(p.level + 1, curveMax)) {
+                p.level++;
+            }
+            if (p.level > origLevel) {
+                p.recalcStats();
+                leveledUp.add(p);
+            }
+            sharedCount++;
+        }
+        // Re-seed the displayed HP so the bar reflects the active pokemon's new maxHP
+        // correctly while messages are on screen.
+        Pokemon active = player();
+        if (active != null) displayedPlayerHP = active.currentHP;
+
+        Runnable finish = () -> phase = Phase.FINISHED;
+        if (sharedCount == 0) {
+            phase = Phase.FINISHED;
+            return;
+        }
+        String activeName = (active != null) ? active.name : "Your Pokemon";
+        String summary = (sharedCount > 1)
+            ? activeName + " and your party gained " + gain + " EXP. Points!"
+            : activeName + " gained " + gain + " EXP. Points!";
+        queue(summary, leveledUp.isEmpty() ? finish : null);
+        for (int i = 0; i < leveledUp.size(); i++) {
+            Pokemon lp = leveledUp.get(i);
+            boolean last = (i == leveledUp.size() - 1);
+            queue(lp.name + " grew to Lv. " + lp.level + "!", last ? finish : null);
+        }
     }
 
     private void handleMoveInput() {
@@ -685,19 +743,40 @@ public class BattleSystem {
         drawHpRow(g2, displayedHp, enemy.maxHP, x + 20, y + 58, w - 40, 12, font, false);
     }
 
-    // Player panel: center-right, includes the HP number text.
+    // Player panel: bottom-right corner. Slightly taller than the enemy panel because it
+    // also carries the EXP bar (below the HP row).
     public static void drawPlayerPanel(Graphics2D g2, Pokemon p, double displayedHp, Font font) {
         if (p == null) return;
-        int x = 450, y = 300, w = 380, h = 130;
+        int x = 490, y = 390, w = 360, h = 118;
         drawPanelBackground(g2, x, y, w, h);
         if (font != null) g2.setFont(font);
         g2.setColor(Color.white);
-        g2.drawString(p.name, x + 20, y + 36);
+        g2.drawString(p.name, x + 18, y + 26);
         String lv = "Lv " + p.level;
         int lvW = g2.getFontMetrics().stringWidth(lv);
         g2.setColor(new Color(220, 230, 240));
-        g2.drawString(lv, x + w - lvW - 18, y + 36);
-        drawHpRow(g2, displayedHp, p.maxHP, x + 20, y + 64, w - 40, 14, font, true);
+        g2.drawString(lv, x + w - lvW - 16, y + 26);
+        drawHpRow(g2, displayedHp, p.maxHP, x + 18, y + 46, w - 36, 11, font, true);
+        drawExpRow(g2, p, x + 18, y + h - 14, w - 36, 6, font);
+    }
+
+    private static void drawExpRow(Graphics2D g2, Pokemon p,
+                                    int x, int y, int w, int h, Font font) {
+        if (font != null) g2.setFont(font);
+        g2.setColor(new Color(150, 200, 255));
+        g2.drawString("EXP", x, y - 2);
+        int labelW = 48;
+        int barX = x + labelW;
+        int barW = w - labelW;
+        double frac = ExpCurves.levelProgress(p);
+        int filled = (int) Math.round(barW * frac);
+        g2.setColor(new Color(20, 25, 32));
+        g2.fillRoundRect(barX, y, barW, h, h, h);
+        if (filled > 0) {
+            // Blue fill, per the EXP-bar convention in mainline Pokemon.
+            g2.setColor(new Color(80, 150, 240));
+            g2.fillRoundRect(barX, y, filled, h, h, h);
+        }
     }
 
     private static void drawPanelBackground(Graphics2D g2, int x, int y, int w, int h) {
