@@ -37,10 +37,15 @@ public class PlayerObjectInteraction {
         if (RNG.nextDouble() > encounterRate) return;
         changeMusic();
         gp.gameState = gp.pokemonTransition;
-        int level = RNG.nextInt(3) + 3;
-        gp.wildPokemon = RNG.nextDouble() < LEGENDARY_ENCOUNTER_RATE
-            ? getWildPokemon.findRandomLegendaryPokemon(level)
-            : getWildPokemon.findRandomNormalPokemon(level);
+        if (RNG.nextDouble() < LEGENDARY_ENCOUNTER_RATE) {
+            // Legendaries scale to the lead pokemon: +10..+20, capped at 100.
+            int leadLevel = gp.playerPokemon.pokemonEquipped.get(0).level;
+            int legendaryLevel = Math.min(100, leadLevel + 10 + RNG.nextInt(11));
+            gp.wildPokemon = getWildPokemon.findRandomLegendaryPokemon(legendaryLevel);
+        } else {
+            int level = RNG.nextInt(3) + 3;
+            gp.wildPokemon = getWildPokemon.findRandomNormalPokemon(level);
+        }
     }
 
     private void changeMusic() {
