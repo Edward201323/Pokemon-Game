@@ -54,19 +54,22 @@ public class PlayerObjectInteraction {
             if (p != null && p.level > partyMax) partyMax = p.level;
         }
         if (RNG.nextDouble() < LEGENDARY_ENCOUNTER_RATE) {
-            // Legendaries scale to the party's best: +10..+20, capped at 100.
-            int legendaryLevel = Math.min(100, partyMax + 10 + RNG.nextInt(11));
+            // Legendaries spawn at the party's max level — never higher, so the player's
+            // best pokemon is always at least matched.
+            int legendaryLevel = Math.min(100, partyMax);
             gp.wildPokemon = getWildPokemon.findRandomLegendaryPokemon(legendaryLevel);
         } else {
-            // Normal wild pokemon scale to the party's best: -10..+5, but both ends are
-            // clamped to [5, 80]. The hard ceiling of 80 keeps grindable wilds below the
-            // player's end-game tier — without clamping `low` too, a Lv-100 party would
-            // push the floor to 90 and the safeguard would yank the ceiling back to 90.
-            int low  = Math.min(80, Math.max(5, partyMax - 10));
-            int high = Math.min(80, partyMax + 5);
-            if (high < low) high = low;
+            // Normal wild pokemon scale to the party's best: -5 up to partyMax (never
+            // above), so the encounter is always within a tight band of the player's
+            // strongest mon. Hard-capped at 80 to keep grindable wilds below the
+            // end-game tier for Lv 80+ parties.
+            int low  = Math.max(5, partyMax - 5);
+            int high = Math.min(80, partyMax);
+            if (low > high) low = high;
             int level = low + RNG.nextInt(high - low + 1);
-            gp.wildPokemon = getWildPokemon.findRandomNormalPokemon(level);
+            // Bucket by partyMax so early-game encounters are mostly base forms, mid-game
+            // mostly mid-stage, and end-game fully evolved — matching the player's tier.
+            gp.wildPokemon = getWildPokemon.findRandomNormalPokemonForPartyMax(level, partyMax);
         }
         // Music has to be picked AFTER the spawn so we can branch on isLegendary.
         changeMusic();

@@ -27,6 +27,11 @@ public class Player extends Entity {
     // on entry, not every frame while standing there.
     private boolean wasAdjacentToCenter;
     private boolean wasAdjacentToTutor;
+    // Edge-detect Shift+S so a single press fires one save (and a held combo doesn't spam).
+    private boolean prevSaveCombo;
+    // Last zone bucket the player was in (true = above the Route 2-3 boundary). Used to
+    // edge-trigger a music swap only on a crossing, not every frame.
+    private Boolean wasAboveRouteBoundary;
     private static final int POKEMON_CENTER_TILE = 193;
     private static final int MOVE_TUTOR_TILE = 173;
 
@@ -77,6 +82,14 @@ public class Player extends Entity {
     }
 
     public void update() {
+        // Shift+S = save. Edge-detected so a held combo writes once. Movement is
+        // suppressed while Shift is held so the player doesn't walk south during the save
+        // (S is also the WASD down key).
+        boolean saveCombo = keyH.shiftPressed && keyH.downPressed;
+        if (saveCombo && !prevSaveCombo) gp.requestSave();
+        prevSaveCombo = saveCombo;
+        if (keyH.shiftPressed) return;
+
         if (!(keyH.upPressed || keyH.downPressed || keyH.leftPressed || keyH.rightPressed)) {
             return;
         }
@@ -120,6 +133,18 @@ public class Player extends Entity {
             gp.moveTutor.open();
         }
         wasAdjacentToTutor = adjTutor;
+
+        // Route 2-3 boundary: when the player crosses it (north or south), swap the
+        // overworld music. Edge-triggered on bucket change. First observation only
+        // primes the bucket — TitleScreen.commitSlot already started the right track.
+        int row = worldY / gp.tileSize;
+        boolean nowAbove = row < Main.GamePanel.ROUTE_BOUNDARY_ROW;
+        if (wasAboveRouteBoundary == null) {
+            wasAboveRouteBoundary = nowAbove;
+        } else if (wasAboveRouteBoundary != nowAbove) {
+            gp.playMusic(gp.overworldMusicIndex());
+            wasAboveRouteBoundary = nowAbove;
+        }
     }
 
     private boolean isAdjacentToTile(int tileNum) {

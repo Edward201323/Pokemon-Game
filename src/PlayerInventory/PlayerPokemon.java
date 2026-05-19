@@ -15,16 +15,16 @@ public class PlayerPokemon {
 
     public PlayerPokemon(GamePanel gp) {
         this.gp = gp;
-        // Testing seed: a full party so the center heal animation, blackout flow, and PC
-        // viewer all have data to drive without grinding encounters first.
-        // Charmander at Lv 15 is one level away from evolving (Lv 16 → Charmeleon), so
-        // one battle's worth of XP triggers the evolution flow for testing.
-        addPokemon("Kyurem",     100); // 4x on Rayquaza, 2x on Groudon
-        addPokemon("Magnezone",  100); // 4x on Kyogre, resists Xerneas
-        addPokemon("Ferrothorn", 100); // 4x on Kyogre+Groudon, resists Xerneas
-        addPokemon("Bisharp",    100); // 2x on Mewtwo, resists Xerneas
-        addPokemon("Lucario",    100); // 2x on Arceus, 2x on Xerneas
-        addPokemon("Hydreigon",  100); // immune to Mewtwo's Psychic
+        // Empty by default — the title screen decides between New Game (seedStarterParty)
+        // and Load Game (SaveManager rebuilds the party from disk). Constructing empty
+        // avoids spending RNG / file lookups before that decision is made.
+    }
+
+    // SaveManager / StarterSelection hook: drop the current party + PC so the caller can
+    // repopulate cleanly.
+    public void clearAll() {
+        pokemonEquipped.clear();
+        pokemonInPC.clear();
     }
 
     public void addPokemon(String pokemonName, int level) {
@@ -54,6 +54,16 @@ public class PlayerPokemon {
         return true;
     }
 
+    // Highest level across party + PC. Used to scale the pokeball catch bonus over the
+    // course of a playthrough (low → normal-ball strength, Lv 100 → ultra-ball strength).
+    // Returns 1 for an empty inventory so the formula stays well-defined for a fresh save.
+    public int highestLevel() {
+        int max = 1;
+        for (Pokemon p : pokemonEquipped) if (p != null && p.level > max) max = p.level;
+        for (Pokemon p : pokemonInPC)     if (p != null && p.level > max) max = p.level;
+        return max;
+    }
+
     // Concatenate party + PC for the PC viewer (party first, then box).
     public java.util.List<Pokemon> allCaughtPokemon() {
         java.util.List<Pokemon> out = new java.util.ArrayList<>(pokemonEquipped.size() + pokemonInPC.size());
@@ -67,7 +77,21 @@ public class PlayerPokemon {
         if (pokemonEquipped.size() < PARTY_LIMIT) {
             pokemonEquipped.add(pokemon);
         } else {
+            // Pokemon stored in the PC auto-heal — boxing is treated as a rest stop.
             pokemonInPC.add(pokemon);
+            healOne(pokemon);
         }
+    }
+
+    // PC-side healing: full HP for a single pokemon. Called when something enters the PC
+    // (caught with full party, or swapped in from the party menu) so the box is always
+    // a fully-healed pool. Callers can also invoke healAllInPC() as a defensive sweep.
+    public static void healOne(Pokemon p) {
+        if (p == null) return;
+        p.currentHP = p.maxHP;
+    }
+
+    public void healAllInPC() {
+        for (Pokemon p : pokemonInPC) healOne(p);
     }
 }

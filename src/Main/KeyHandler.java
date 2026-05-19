@@ -8,9 +8,29 @@ public class KeyHandler implements KeyListener {
     // Enter is the primary "confirm"; Escape is the universal "cancel / back".
     public boolean enterPressed;
     public boolean escPressed;
+    // Held as the modifier half of the Shift+S save / Shift+D delete hotkeys. Tracked
+    // separately so we can suppress player movement while Shift is held.
+    public boolean shiftPressed;
+    // Raw D key (also aliased to rightPressed for WASD movement). Exposed on its own so
+    // TitleScreen can detect Shift+D specifically without confusing it with Shift+Right.
+    public boolean dPressed;
+
+    // Free-text capture for the name-entry screen. When `captureText` is true, each
+    // keyTyped event appends to `typedBuffer` (backspace removes the last char).
+    // Other UIs ignore this entirely — they read xPressed/zPressed/etc.
+    public final StringBuilder typedBuffer = new StringBuilder();
+    public boolean captureText = false;
+    private static final int TYPED_BUFFER_MAX = 32;
 
     @Override
     public void keyTyped(KeyEvent e) {
+        if (!captureText) return;
+        char c = e.getKeyChar();
+        if (c == '\b') {
+            if (typedBuffer.length() > 0) typedBuffer.deleteCharAt(typedBuffer.length() - 1);
+        } else if (c >= 32 && c < 127) {
+            if (typedBuffer.length() < TYPED_BUFFER_MAX) typedBuffer.append(c);
+        }
     }
 
     @Override
@@ -38,6 +58,9 @@ public class KeyHandler implements KeyListener {
                 leftPressed = pressed;
                 break;
             case KeyEvent.VK_D:
+                rightPressed = pressed;
+                dPressed = pressed;
+                break;
             case KeyEvent.VK_RIGHT:
                 rightPressed = pressed;
                 break;
@@ -52,6 +75,7 @@ public class KeyHandler implements KeyListener {
             case KeyEvent.VK_P: pPressed = pressed; break;
             case KeyEvent.VK_I: iPressed = pressed; break;
             case KeyEvent.VK_ENTER: enterPressed = pressed; break;
+            case KeyEvent.VK_SHIFT: shiftPressed = pressed; break;
         }
     }
 }

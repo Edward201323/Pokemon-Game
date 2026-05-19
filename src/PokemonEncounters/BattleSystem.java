@@ -62,8 +62,15 @@ public class BattleSystem {
 
     // Edge-detection: a key only counts as "just pressed" on the frame it goes
     // from up to down. Without this, holding Z to fight would auto-select move 1.
-    private boolean prevZ, prevX, prevC, prevV, prevEsc;
-    private boolean justZ, justX, justC, justV, justEsc;
+    private boolean prevEsc;
+    private boolean justEsc;
+    // Arrow-key + Enter edges for the action / move menu cursors.
+    private boolean prevUp, prevDown, prevLeft, prevRight, prevEnter;
+    private boolean justUp, justDown, justLeft, justRight, justEnter;
+    // 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right. Persisted across
+    // CHOOSE_ACTION ↔ CHOOSE_MOVE so the cursor stays where it was last frame.
+    private int actionCursor;
+    private int moveCursor;
 
     // Animated HP-bar values that ease toward each Pokemon's currentHP.
     private double displayedPlayerHP;
@@ -184,11 +191,14 @@ public class BattleSystem {
         activeIndex = firstLive;
         // Seed prev* with current state so a key already held when the battle
         // begins must be released and re-pressed before it registers.
-        prevZ = keyH.zPressed;
-        prevX = keyH.xPressed;
-        prevC = keyH.cPressed;
-        prevV = keyH.vPressed;
         prevEsc = keyH.escPressed;
+        prevUp    = keyH.upPressed;
+        prevDown  = keyH.downPressed;
+        prevLeft  = keyH.leftPressed;
+        prevRight = keyH.rightPressed;
+        prevEnter = keyH.enterPressed;
+        actionCursor = 0;
+        moveCursor = 0;
         displayedPlayerHP = player().currentHP;
         displayedEnemyHP = enemy().currentHP;
     }
@@ -328,16 +338,18 @@ public class BattleSystem {
     }
 
     private void sampleEdges() {
-        justZ = keyH.zPressed && !prevZ;
-        justX = keyH.xPressed && !prevX;
-        justC = keyH.cPressed && !prevC;
-        justV = keyH.vPressed && !prevV;
-        justEsc = keyH.escPressed && !prevEsc;
-        prevZ = keyH.zPressed;
-        prevX = keyH.xPressed;
-        prevC = keyH.cPressed;
-        prevV = keyH.vPressed;
-        prevEsc = keyH.escPressed;
+        justEsc   = keyH.escPressed   && !prevEsc;
+        justUp    = keyH.upPressed    && !prevUp;
+        justDown  = keyH.downPressed  && !prevDown;
+        justLeft  = keyH.leftPressed  && !prevLeft;
+        justRight = keyH.rightPressed && !prevRight;
+        justEnter = keyH.enterPressed && !prevEnter;
+        prevEsc   = keyH.escPressed;
+        prevUp    = keyH.upPressed;
+        prevDown  = keyH.downPressed;
+        prevLeft  = keyH.leftPressed;
+        prevRight = keyH.rightPressed;
+        prevEnter = keyH.enterPressed;
     }
 
     private void easeHpBars() {
@@ -381,31 +393,37 @@ public class BattleSystem {
     // ----- input -----
 
     private void handleActionInput() {
-        if (justZ)      phase = Phase.CHOOSE_MOVE;                     // Fight
-        else if (justX) {
-            // CATCH disabled during a trainer battle — bosses can't be caught.
-            if (gp.isBossBattle) {
-                queue("You can't catch a trainer's Pokemon!", () -> phase = Phase.CHOOSE_ACTION);
-            } else {
-                startBallThrow();
-            }
-        }
-        else if (justV) {
-            // Likewise, RUN is disabled during a boss battle (matches mainline trainer fights).
-            if (gp.isBossBattle) {
-                queue("You can't run from a trainer battle!", () -> phase = Phase.CHOOSE_ACTION);
-            } else {
-                queue("You got away safely!", () -> phase = Phase.FINISHED);
-            }
-        }
-        else if (justC) {
-            // Pokemon: open the party selector. If no other teammate can fight, surface
-            // a message instead of opening an empty menu.
-            if (firstLiveExcept(activeIndex) < 0) {
-                queue("No other Pokemon can fight!", () -> phase = Phase.CHOOSE_ACTION);
-            } else {
-                openSwitchMenu(true);
-            }
+        // 2x2 cursor: 0=FIGHT, 1=CATCH, 2=POKEMON, 3=RUN.
+        if (justUp    && actionCursor >= 2)             actionCursor -= 2;
+        if (justDown  && actionCursor < 2)              actionCursor += 2;
+        if (justLeft  && (actionCursor & 1) == 1)       actionCursor -= 1;
+        if (justRight && (actionCursor & 1) == 0)       actionCursor += 1;
+        if (!justEnter) return;
+        switch (actionCursor) {
+            case 0: // FIGHT
+                phase = Phase.CHOOSE_MOVE;
+                break;
+            case 1: // CATCH — disabled in trainer battles
+                if (gp.isBossBattle) {
+                    queue("You can't catch a trainer's Pokemon!", () -> phase = Phase.CHOOSE_ACTION);
+                } else {
+                    startBallThrow();
+                }
+                break;
+            case 2: // POKEMON — open switch menu; no-op if no other teammate can fight
+                if (firstLiveExcept(activeIndex) < 0) {
+                    queue("No other Pokemon can fight!", () -> phase = Phase.CHOOSE_ACTION);
+                } else {
+                    openSwitchMenu(true);
+                }
+                break;
+            case 3: // RUN — disabled in trainer battles
+                if (gp.isBossBattle) {
+                    queue("You can't run from a trainer battle!", () -> phase = Phase.CHOOSE_ACTION);
+                } else {
+                    queue("You got away safely!", () -> phase = Phase.FINISHED);
+                }
+                break;
         }
     }
 
@@ -463,8 +481,10 @@ public class BattleSystem {
         } else {
             switchHidden = true;
             queue("Come back, " + old.name + "!", () -> {
+                gp.playSE(0); // pokeball recall click
                 switchHidden = false;
                 queue("Go! " + nw.name + "!", () -> {
+                    gp.playSE(0); // pokeball open SFX as the new pokemon emerges
                     doEnemyAttack(enemyMove);
                     then(this::afterEnemyAttack);
                 });
@@ -609,11 +629,13 @@ public class BattleSystem {
         // Escape backs out of move selection — un-commits the FIGHT choice, returns to
         // the action menu (FIGHT / CATCH / POKEMON / RUN).
         if (justEsc) { phase = Phase.CHOOSE_ACTION; return; }
-        Move chosen = null;
-        if      (justZ) chosen = moveAt(0);
-        else if (justX) chosen = moveAt(1);
-        else if (justC) chosen = moveAt(2);
-        else if (justV) chosen = moveAt(3);
+        // 2x2 cursor over move slots 0..3. Enter commits.
+        if (justUp    && moveCursor >= 2)             moveCursor -= 2;
+        if (justDown  && moveCursor < 2)              moveCursor += 2;
+        if (justLeft  && (moveCursor & 1) == 1)       moveCursor -= 1;
+        if (justRight && (moveCursor & 1) == 0)       moveCursor += 1;
+        if (!justEnter) return;
+        Move chosen = moveAt(moveCursor);
         if (chosen != null) resolveTurn(chosen);
     }
 
@@ -728,7 +750,20 @@ public class BattleSystem {
 
     private Move pickAIMove(Pokemon enemy) {
         if (enemy.moves == null || enemy.moves.isEmpty()) return null;
-        return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
+        // Smart AI: skip moves the player is immune to (0x effectiveness) so an Electric
+        // enemy facing a Ground player doesn't keep picking dead Electric moves. Every
+        // pokemon's guaranteed Normal slot means there's almost always a non-immune
+        // option except against a Ghost defender. Falls back to a random pick if every
+        // known move happens to be a no-op.
+        Pokemon defender = player();
+        java.util.List<Move> usable = new java.util.ArrayList<>(enemy.moves.size());
+        for (Move m : enemy.moves) {
+            if (m == null) continue;
+            double eff = TypeChart.effectiveness(m.type, defender.currentType1, defender.currentType2);
+            if (eff > 0) usable.add(m);
+        }
+        if (usable.isEmpty()) return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
+        return usable.get(RNG.nextInt(usable.size()));
     }
 
     // ----- catch flow -----
@@ -757,8 +792,18 @@ public class BattleSystem {
         return catchSuccess ? 3 : Math.min(shakeCount, 3);
     }
 
-    // Ultra Ball bonus from Gen 1 onward.
-    private static final double ULTRA_BALL_BONUS = 2.0;
+    // Ball bonus scales with progression: starts at normal-ball strength (1.0x) and
+    // ramps linearly to ultra-ball strength (2.0x) as the player's best pokemon reaches
+    // Lv 100. Highest is computed across party + PC so the bonus survives stashing your
+    // strongest mon in the box.
+    private static final double NORMAL_BALL_BONUS = 1.0;
+    private static final double ULTRA_BALL_BONUS  = 2.0;
+
+    private double currentBallBonus() {
+        int highest = Math.max(1, Math.min(100, gp.playerPokemon.highestLevel()));
+        double t = (highest - 1) / 99.0; // 0 at Lv 1, 1 at Lv 100
+        return NORMAL_BALL_BONUS + t * (ULTRA_BALL_BONUS - NORMAL_BALL_BONUS);
+    }
 
     // Gen 5+ catch formula. HP scaling is built into the (3*HPmax - 2*HPcur) term, so a
     // weakened pokemon is easier to catch. No status conditions in this game, so statusBonus = 1.
@@ -769,7 +814,7 @@ public class BattleSystem {
         int hpMax = Math.max(1, e.maxHP);
         int hpCur = Math.max(1, e.currentHP);
         int cr = Math.max(1, e.captureRate);
-        double a = ((3.0 * hpMax - 2.0 * hpCur) * cr * ULTRA_BALL_BONUS) / (3.0 * hpMax);
+        double a = ((3.0 * hpMax - 2.0 * hpCur) * cr * currentBallBonus()) / (3.0 * hpMax);
         if (a >= 255) return 4;
         if (a < 1) a = 1;
         double b = 65536.0 / Math.pow(255.0 / a, 3.0 / 16.0);
@@ -785,10 +830,11 @@ public class BattleSystem {
         Pokemon e = enemy();
         if (catchSuccess) {
             // Ball stays sitting on the (hidden) enemy through the verdict and the fade.
-            // EXP is awarded the same way as a defeat — Exp Share splits to the party.
+            // Catches award no EXP — the player gets the pokemon itself as the reward,
+            // not a free level on the active mon (or party via Exp Share).
             queue("Gotcha! " + e.name + " was caught!", () -> {
                 gp.playerPokemon.addPokemonCaught();
-                giveExpAndFinish();
+                phase = Phase.FINISHED;
             });
         } else {
             // Ball pops open: hide the ball, bring the enemy back, then the canonical breakaway line.
@@ -1051,11 +1097,9 @@ public class BattleSystem {
         g2.drawString("What will", x + 32, y + 56);
         g2.drawString(p.name + " do?", x + 32, y + 102);
 
-        // 2x2 button grid on the right half.
-        String[][] labels = {
-            { "FIGHT (Z)",   "CATCH (X)" },
-            { "POKEMON (C)", "RUN (V)" },
-        };
+        // 2x2 button grid on the right half. Order matches actionCursor indices
+        // (0=top-left FIGHT, 1=top-right CATCH, 2=bottom-left POKEMON, 3=bottom-right RUN).
+        String[] labels = { "FIGHT", "CATCH", "POKEMON", "RUN" };
         int gridX = x + w / 2 + 8;
         int gridY = y + 18;
         int gridW = (x + w) - gridX - 18;
@@ -1063,22 +1107,23 @@ public class BattleSystem {
         int gap = 10;
         int cellW = (gridW - gap) / 2;
         int cellH = (gridH - gap) / 2;
-        g2.setStroke(new BasicStroke(1.5f));
-        for (int row = 0; row < 2; row++) {
-            for (int col = 0; col < 2; col++) {
-                int bx = gridX + col * (cellW + gap);
-                int by = gridY + row * (cellH + gap);
-                g2.setColor(new Color(40, 60, 90, 210));
-                g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
-                g2.setColor(new Color(110, 150, 190, 230));
-                g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
-                String label = labels[row][col];
-                int textW = g2.getFontMetrics().stringWidth(label);
-                int tx = bx + (cellW - textW) / 2;
-                int ty = by + cellH / 2 + 10;
-                g2.setColor(Color.white);
-                g2.drawString(label, tx, ty);
-            }
+        for (int i = 0; i < 4; i++) {
+            int col = i % 2;
+            int row = i / 2;
+            int bx = gridX + col * (cellW + gap);
+            int by = gridY + row * (cellH + gap);
+            boolean focused = (i == actionCursor);
+            g2.setColor(new Color(focused ? 70 : 40, focused ? 90 : 60, focused ? 130 : 90, 230));
+            g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
+            g2.setStroke(new BasicStroke(focused ? 3f : 1.5f));
+            g2.setColor(focused ? new Color(255, 220, 60) : new Color(110, 150, 190, 230));
+            g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
+            String label = labels[i];
+            int textW = g2.getFontMetrics().stringWidth(label);
+            int tx = bx + (cellW - textW) / 2;
+            int ty = by + cellH / 2 + 10;
+            g2.setColor(Color.white);
+            g2.drawString(label, tx, ty);
         }
         g2.setStroke(prevStroke);
     }
@@ -1104,7 +1149,6 @@ public class BattleSystem {
 
         // 2x2 grid of move buttons across the panel (leave a small strip for the back hint).
         java.util.List<Move> moves = player().moves;
-        String[] keys = { "Z", "X", "C", "V" };
         int gridX = x + 24;
         int gridY = y + 18;
         int gridW = w - 48;
@@ -1119,12 +1163,15 @@ public class BattleSystem {
             int bx = gridX + col * (cellW + gap);
             int by = gridY + row * (cellH + gap);
             boolean has = moves != null && i < moves.size() && moves.get(i) != null;
-            g2.setColor(new Color(40, 60, 90, has ? 210 : 130));
+            boolean focused = (i == moveCursor) && has;
+            g2.setColor(new Color(focused ? 70 : 40, focused ? 90 : 60, focused ? 130 : 90,
+                                  has ? 230 : 130));
             g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
-            g2.setStroke(new BasicStroke(1.5f));
-            g2.setColor(new Color(110, 150, 190, has ? 230 : 140));
+            g2.setStroke(new BasicStroke(focused ? 3f : 1.5f));
+            g2.setColor(focused ? new Color(255, 220, 60)
+                                : new Color(110, 150, 190, has ? 230 : 140));
             g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
-            String label = has ? (keys[i] + "   " + moves.get(i).name) : (keys[i] + "   —");
+            String label = has ? moves.get(i).name : "—";
             int textW = g2.getFontMetrics().stringWidth(label);
             int tx = bx + (cellW - textW) / 2;
             int ty = by + cellH / 2 + 10;
@@ -1133,7 +1180,7 @@ public class BattleSystem {
         }
         // Hint strip
         g2.setColor(new Color(180, 195, 210));
-        String hint = "ESC to go back";
+        String hint = "Arrows navigate   Enter select   ESC back";
         int hintW = g2.getFontMetrics().stringWidth(hint);
         g2.drawString(hint, x + w - hintW - 24, y + panelH - 14);
         g2.setStroke(prevStroke);

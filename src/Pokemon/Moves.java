@@ -53,54 +53,79 @@ public class Moves {
         return getMoves(type1, type2, 50);
     }
 
-    // Returns 4 moves tailored to the pokemon's level + types. Mono-type gets 2 physical +
-    // 2 special from its single pool. Dual-type gets 1 physical + 1 special from each type.
+    // Hyper Beam is excluded from the universal Normal slot and from the Move Tutor —
+    // it's still in the regular pool so Normal-type pokemon can roll it via tier bias.
+    private static final String HYPER_BEAM = "Hyper Beam";
+
+    // Returns up to 4 moves tailored to the pokemon's level + types. Slot 0 is the
+    // strongest qualifying Normal move (except Hyper Beam) — guarantees every pokemon
+    // has a fallback against immune defenders (e.g., Electric vs Ground). The remaining
+    // slots are filled by the type-tiered picker: mono-type fills 3 from type1, dual-type
+    // fills 2 from type1 + 1 from type2.
     public static List<Move> getMoves(String type1, String type2, int level) {
         List<Move> result = new ArrayList<>();
+        Move normal = strongestNormalExceptHyperBeam(level);
+        if (normal != null) result.add(normal);
         boolean dualType = type2 != null
                 && !type2.equalsIgnoreCase("none")
                 && !type2.equalsIgnoreCase(type1);
         if (dualType) {
             pickFromType(result, type1, level, 2);
-            pickFromType(result, type2, level, 2);
+            pickFromType(result, type2, level, 1);
         } else {
-            pickFromType(result, type1, level, 4);
+            pickFromType(result, type1, level, 3);
         }
-        return result;
+        // De-dupe: a Normal-type pokemon may roll the same move via the type-picker;
+        // keep slot 0's pick and drop later duplicates.
+        java.util.LinkedHashMap<String, Move> uniq = new java.util.LinkedHashMap<>();
+        for (Move m : result) if (m != null) uniq.putIfAbsent(m.name, m);
+        return new ArrayList<>(uniq.values());
     }
 
-    // Pick `count` moves from one type, split evenly between physical and special. Each
-    // half is independently filtered by level, then biased toward the highest-tier moves
-    // the pokemon qualifies for.
+    // Highest-power Normal move the pokemon qualifies for, excluding Hyper Beam. Ties
+    // broken by minLevel (newer move wins). Returns null only if no Normal move at all
+    // qualifies — shouldn't happen in practice since Tackle is Lv 1.
+    private static Move strongestNormalExceptHyperBeam(int level) {
+        List<Move> pool = BY_TYPE.get("normal");
+        if (pool == null) return null;
+        Move best = null;
+        for (Move m : pool) {
+            if (m.name.equalsIgnoreCase(HYPER_BEAM)) continue;
+            if (m.minLevel > level) continue;
+            if (best == null
+                    || m.basePower > best.basePower
+                    || (m.basePower == best.basePower && m.minLevel > best.minLevel)) {
+                best = m;
+            }
+        }
+        return best;
+    }
+
+    // Pick `count` moves from one type, split between physical and special (phys takes
+    // the extra slot on odd counts). Each half is independently filtered by level then
+    // biased toward the highest-tier moves the pokemon qualifies for.
     private static void pickFromType(List<Move> out, String type, int level, int count) {
-        if (type == null) return;
+        if (type == null || count <= 0) return;
         List<Move> pool = BY_TYPE.get(type.toLowerCase());
         if (pool == null || pool.isEmpty()) return;
-        int halfCount = Math.max(1, count / 2);
+        int physCount = (count + 1) / 2;
+        int specCount = count - physCount;
         List<Move> phys = new ArrayList<>(), spec = new ArrayList<>();
         for (Move m : pool) (m.physical ? phys : spec).add(m);
-        pickWithTierBias(out, phys, level, halfCount);
-        pickWithTierBias(out, spec, level, halfCount);
+        pickWithTierBias(out, phys, level, physCount);
+        pickWithTierBias(out, spec, level, specCount);
     }
 
-    // Filter `pool` to moves that qualify at `level`. If too few qualify, top up from the
-    // next-lowest tiers so low-level pokemon still fill their slots. Then take the top
-    // half by minLevel (the "tier bias" — favors newer moves for high-level pokemon) and
-    // randomly sample `count` from that subset.
+    // Filter `pool` to moves that qualify at `level`. If too few qualify, slots stay
+    // empty — low-level pokemon (e.g., a Lv-5 starter) shouldn't be handed a Lv-85
+    // move just to fill space. Among qualifying moves, take the top half by minLevel
+    // (the "tier bias" — favors newer moves for high-level pokemon) and randomly sample
+    // `count` from that subset.
     private static void pickWithTierBias(List<Move> out, List<Move> pool, int level, int count) {
         if (pool.isEmpty() || count <= 0) return;
         List<Move> qualified = new ArrayList<>();
         for (Move m : pool) if (m.minLevel <= level) qualified.add(m);
-        if (qualified.size() < count) {
-            // Top up with next-lowest tiers (sorted asc by minLevel) until we have count.
-            List<Move> unqualified = new ArrayList<>();
-            for (Move m : pool) if (m.minLevel > level) unqualified.add(m);
-            unqualified.sort((a, b) -> a.minLevel - b.minLevel);
-            for (Move m : unqualified) {
-                if (qualified.size() >= count) break;
-                qualified.add(m);
-            }
-        }
+        if (qualified.isEmpty()) return;
         if (qualified.size() <= count) {
             out.addAll(qualified);
             return;
@@ -111,6 +136,18 @@ public class Moves {
         List<Move> top = new ArrayList<>(qualified.subList(0, Math.min(qualified.size(), topHalfSize)));
         Collections.shuffle(top, RNG);
         for (int i = 0; i < count && i < top.size(); i++) out.add(top.get(i));
+    }
+
+    // Look up a move by name across every type pool. Used by SaveManager to rebuild
+    // a pokemon's move list on load (we persist names only). Returns null if not found.
+    public static Move findByName(String name) {
+        if (name == null) return null;
+        for (List<Move> pool : BY_TYPE.values()) {
+            for (Move m : pool) {
+                if (m.name.equals(name)) return m;
+            }
+        }
+        return null;
     }
 
     // For the Move Tutor: every move the pokemon could be taught right now. All moves of
@@ -126,6 +163,11 @@ public class Moves {
                 && !p.type2.equalsIgnoreCase(p.type1)) {
             addLearnableForType(out, p.type2, p.level, alreadyKnown);
         }
+        // Universal Normal coverage — every pokemon can learn any Normal move via the
+        // tutor (de-duped against the type-based pool above). Hyper Beam is excluded
+        // from tutoring across the board, regardless of pokemon type.
+        addLearnableForType(out, "normal", p.level, alreadyKnown);
+        out.removeIf(m -> m.name.equalsIgnoreCase(HYPER_BEAM));
         out.sort((a, b) -> {
             int t = a.type.compareTo(b.type);
             return t != 0 ? t : a.minLevel - b.minLevel;

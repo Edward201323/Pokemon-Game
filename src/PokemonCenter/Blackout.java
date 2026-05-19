@@ -72,7 +72,7 @@ public class Blackout {
                         respawnAndHeal();
                         // Music was stopped at encounter end; resume now that the party is
                         // fully healed and we're about to fade the world back in.
-                        gp.resumeMusic(3);
+                        gp.resumeMusic(gp.overworldMusicIndex());
                         phase = Phase.FADE_IN;
                         frame = 0;
                     }

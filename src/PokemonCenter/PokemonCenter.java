@@ -91,7 +91,7 @@ public class PokemonCenter {
         prevDown = keyH.downPressed;
         menuIndex = 0;
         queueLines(new String[] {
-            "Hello, and welcome to the Pokemon Center.",
+            "Hello " + gp.playerName + ", welcome to the Pokemon Center.",
             "What would you like to do?",
         }, () -> phase = Phase.MENU);
         autoAdvance = false;
@@ -212,6 +212,8 @@ public class PokemonCenter {
         if (pcIdx < 0 || pcIdx >= box.size()) return;
         Pokemon partyMon = party.get(partySlot);
         Pokemon pcMon = box.get(pcIdx);
+        // The party member is heading into PC storage — auto-heal it on the way in.
+        PlayerInventory.PlayerPokemon.healOne(partyMon);
         box.set(pcIdx, partyMon);
         party.set(partySlot, pcMon);
         // Rebuild the PC-only snapshot and keep the cursor in range.

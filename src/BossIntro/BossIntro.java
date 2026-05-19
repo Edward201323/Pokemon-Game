@@ -67,7 +67,7 @@ public class BossIntro {
         // encounter (with the visible pokeball effect) so this dialog stays pure cutscene.
         String[] lines = {
             ".....",
-            "I've been waiting for you.",
+            "I've been waiting for you, " + gp.playerName + ".",
             "Don't you recognize me?",
             "I am you. You are me.",
             OBJ_Boss.DISPLAY_NAME + " would like to battle!",

@@ -83,7 +83,7 @@ public class MoveTutor {
         slotCursor = 0;
         refreshInput();
         queueLines(new String[] {
-            "Hello, I'm a Move Tutor.",
+            "Hello " + gp.playerName + ", I'm a Move Tutor.",
             "I can teach your Pokemon new moves.",
             "Choose a Pokemon.",
         }, this::enterPickPokemon);
@@ -171,6 +171,18 @@ public class MoveTutor {
         }
         if (justConfirm) {
             selectedMove = learnableCache.get(moveCursor);
+            Pokemon selected = selectedPokemon();
+            // If the pokemon has a free move slot (under 4 known moves), skip the
+            // forget-which-move picker entirely and just append the new move.
+            if (selected != null && (selected.moves == null || selected.moves.size() < 4)) {
+                if (selected.moves == null) selected.moves = new java.util.ArrayList<>();
+                selected.moves.add(selectedMove);
+                queueLines(new String[] { selected.name + " learned " + selectedMove.name + "!",
+                                          "Come back any time!" }, this::close);
+                autoAdvance = false;
+                phase = Phase.OUTRO;
+                return;
+            }
             slotCursor = 0;
             phase = Phase.PICK_SLOT;
         }

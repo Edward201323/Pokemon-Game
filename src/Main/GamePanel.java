@@ -1,6 +1,7 @@
 package Main;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import javax.swing.JPanel;
@@ -68,6 +69,18 @@ public class GamePanel extends JPanel implements Runnable{
 
     public PlayerPokemon playerPokemon = new PlayerPokemon(this);
 
+    // Active save slot (1..SaveManager.SLOT_COUNT). The title screen sets this on launch,
+    // and Shift+S writes back to the same slot for the rest of the session.
+    public int currentSaveSlot = 1;
+    public Save.TitleScreen titleScreen = new Save.TitleScreen(this, keyH);
+    public Save.StarterSelection starterSelection = new Save.StarterSelection(this, keyH);
+    public Save.NameEntry nameEntry = new Save.NameEntry(this, keyH);
+    // Player's chosen name. Set in NameEntry on new game, loaded from disk for saved
+    // worlds, and displayed on title slot rows + woven into NPC dialog greetings.
+    public String playerName = "Player";
+    // Frames remaining on the "Game saved!" overlay. paintComponent draws it while > 0.
+    public int saveOverlayFrames;
+
     Thread gameThread; //adds "time" to the game
     
     public Player player = new Player(this,keyH); //Player Object Interaction
@@ -86,6 +99,9 @@ public class GamePanel extends JPanel implements Runnable{
     public final int blackoutState = 9;      // wipe-out fade-out + dialog + teleport + fade-in
     public final int moveTutorState = 10;    // Move Tutor at tile 153
     public final int bossIntroState = 11;    // Boss pre-fight dialog (overworld cutscene)
+    public final int titleState = 12;        // Slot picker shown on launch (New World / Load)
+    public final int starterSelectionState = 13; // One-time starter pick after "New World"
+    public final int nameEntryState = 14;        // "What's your name?" prompt before starter pick
 
     public GamePanel(){
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
@@ -98,9 +114,28 @@ public class GamePanel extends JPanel implements Runnable{
     public void setupGame(){
         //creates method so we can set up other stuff in the future
         aSetter.setObject();
-        //plays sound of music array index i
-        playMusic(3);
-        gameState = playState;
+        // Title-screen theme: 2_NewBeginning.wav. Swapped to the overworld track once
+        // the player commits to a slot (TitleScreen.commitSlot calls playMusic on the
+        // zone-appropriate index).
+        playMusic(2);
+        // Boot into the title screen — the player picks a save slot before gameplay starts.
+        // PlayerPokemon constructs empty; either seedStarterParty (New) or SaveManager.load
+        // (Load) fills it in once a slot is committed.
+        gameState = titleState;
+        titleScreen.refreshInput();
+    }
+
+    // Route 2-3 starts above this row (0-indexed). At/below the row we play the default
+    // Mitis Town theme; above it, the Route 2-3 theme. Player.update detects crossings
+    // and swaps the music on transition; other systems that resume overworld music
+    // (encounter end, blackout) call overworldMusicIndex() to pick the right track.
+    public static final int ROUTE_BOUNDARY_ROW = 61;
+    public static final int MUSIC_ROUTE_NORTH = 12; // 12_Route2-3.wav
+    public static final int MUSIC_OVERWORLD_DEFAULT = 3; // 3_MitisTown.wav
+
+    public int overworldMusicIndex() {
+        int row = player.worldY / tileSize;
+        return row < ROUTE_BOUNDARY_ROW ? MUSIC_ROUTE_NORTH : MUSIC_OVERWORLD_DEFAULT;
     }
 
     public void startGameThread(){
@@ -152,15 +187,50 @@ public class GamePanel extends JPanel implements Runnable{
             moveTutor.update();
         } else if (gameState == bossIntroState) {
             bossIntro.update();
+        } else if (gameState == titleState) {
+            titleScreen.update();
+        } else if (gameState == starterSelectionState) {
+            starterSelection.update();
+        } else if (gameState == nameEntryState) {
+            nameEntry.update();
         }
         // Other states (encounter/transition/inventory) currently have no per-frame logic;
         // their visuals are driven by counters inside their draw() methods.
+        if (saveOverlayFrames > 0) saveOverlayFrames--;
+    }
+
+    // Player.update calls this when it detects Shift+S. Writes the current world to the
+    // active slot and flashes a "Game saved!" toast for ~1.5s. Guarded to playState only:
+    // saving mid-encounter, mid-blackout, or during the starter pick would persist a
+    // half-built world state that's awkward to resume into.
+    public void requestSave() {
+        if (gameState != playState) return;
+        if (Save.SaveManager.save(currentSaveSlot, this)) {
+            saveOverlayFrames = 90;
+        }
     }
 
     @Override
     public void paintComponent(Graphics g){
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D)g;
+
+        // Title screen and starter pick own the whole frame — skip the world render.
+        if (gameState == titleState) {
+            titleScreen.draw(g2);
+            g2.dispose();
+            return;
+        }
+        if (gameState == starterSelectionState) {
+            starterSelection.draw(g2);
+            g2.dispose();
+            return;
+        }
+        if (gameState == nameEntryState) {
+            nameEntry.draw(g2);
+            g2.dispose();
+            return;
+        }
 
         tileM.draw(g2);
 
@@ -174,7 +244,7 @@ public class GamePanel extends JPanel implements Runnable{
 
         //Draws player top half
         player.drawPlayerHalf(g2, true);
-        
+
         openPlayerInventory.draw(g2);
 
         encounter.draw(g2);
@@ -185,7 +255,26 @@ public class GamePanel extends JPanel implements Runnable{
         bossIntro.draw(g2);
         blackout.draw(g2);
 
+        if (saveOverlayFrames > 0) drawSaveToast(g2);
+
         g2.dispose();
+    }
+
+    // Brief "Game saved!" toast — top-right rounded panel, fades over its last 20 frames.
+    private void drawSaveToast(Graphics2D g2) {
+        int w = 200, h = 44;
+        int x = screenWidth - w - 20;
+        int y = 20;
+        int alpha = saveOverlayFrames < 20 ? Math.max(0, saveOverlayFrames * 12) : 230;
+        g2.setColor(new Color(8, 14, 22, Math.min(230, alpha)));
+        g2.fillRoundRect(x, y, w, h, 14, 14);
+        g2.setColor(new Color(255, 220, 60, Math.min(255, alpha + 25)));
+        g2.drawRoundRect(x, y, w, h, 14, 14);
+        g2.setColor(new Color(255, 255, 255, Math.min(255, alpha + 25)));
+        g2.setFont(getFont().deriveFont(Font.BOLD, 18f));
+        String msg = "Game saved (Slot " + currentSaveSlot + ")";
+        java.awt.FontMetrics fm = g2.getFontMetrics();
+        g2.drawString(msg, x + (w - fm.stringWidth(msg)) / 2, y + 28);
     }
 
     public void playMusic(int i){

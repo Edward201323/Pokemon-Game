@@ -146,8 +146,11 @@ public class PokemonEncounter {
         // current HP directly (no animated easing yet, since the battle hasn't started).
         BattleSystem.drawEnemyPanel(g2, gp.wildPokemon, gp.wildPokemon.currentHP, MaruMonicaSmall);
 
-        Pokemon leadForSendOut = gp.playerPokemon.pokemonEquipped.isEmpty()
-            ? null : gp.playerPokemon.pokemonEquipped.get(0);
+        // Lead is the first non-fainted party member — skipping a fainted slot-0 here
+        // avoids the awkward "Go! Charizard! [forced switch]" beat at battle start.
+        // Falls back to slot 0 only if every member is fainted (which the blackout flow
+        // should normally have intercepted before we got here).
+        Pokemon leadForSendOut = pickLeadForSendOut();
 
         if (gp.isBossBattle) {
             // Boss flow: *player* sends out first into an empty enemy slot. After the
@@ -191,7 +194,8 @@ public class PokemonEncounter {
             } else if (animationFrame == 4){
                 g2.drawImage(encounterAssets[13], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
             } else if (animationFrame == 5){
-                g2.drawImage(getPokemonImages.getPokemonBack(gp.playerPokemon.pokemonEquipped.get(0)),
+                Pokemon lead = pickLeadForSendOut();
+                g2.drawImage(getPokemonImages.getPokemonBack(lead),
                              PLAYER_X, PLAYER_Y, PLAYER_W, PLAYER_H, null);
             }
         }
@@ -310,7 +314,7 @@ public class PokemonEncounter {
         // On a normal end, return to overworld music immediately. On a blackout, leave
         // the music silent — Blackout will resume it once the party has been healed.
         if (!gp.playerPokemon.isAllFainted()) {
-            gp.resumeMusic(3);
+            gp.resumeMusic(gp.overworldMusicIndex());
         }
         // If this was a boss battle and the player survived, the boss is defeated — remove
         // it from the map so it can't be rebattled. On a loss the boss stays (you can try
@@ -398,6 +402,17 @@ public class PokemonEncounter {
     }
  
  
+    // First non-fainted party member, or slot 0 as a fallback. Used for the pre-encounter
+    // "Go! X!" beat so a fainted slot-0 doesn't get thrown out just to be switched immediately.
+    private Pokemon pickLeadForSendOut() {
+        java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
+        if (party.isEmpty()) return null;
+        for (Pokemon p : party) {
+            if (p != null && p.currentHP > 0) return p;
+        }
+        return party.get(0);
+    }
+
     //Use whens switch pokemon, run, etc.
     private void resetPokemonEquippedStats(){
         for(Pokemon pokemon: gp.playerPokemon.pokemonEquipped){

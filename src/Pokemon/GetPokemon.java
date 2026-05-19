@@ -17,6 +17,44 @@ public class GetPokemon {
     private static final String[] LEGENDARY_NAMES = collectByLegendary(true);
     private static final String[] NORMAL_NAMES    = collectByLegendary(false);
 
+    // Non-legendary species bucketed by where they sit in their evolution chain. Lets the
+    // encounter system bias by the player's max party level: low-level players meet base
+    // forms, mid-level players meet middle forms, high-level players meet final forms.
+    // Single-stage species (no evolution at all, e.g., Tauros) bucket as FINAL so they
+    // still appear, just not at low levels.
+    private static final String[] STAGE_BASE_NAMES  = collectByStage(0);
+    private static final String[] STAGE_MID_NAMES   = collectByStage(1);
+    private static final String[] STAGE_FINAL_NAMES = collectByStage(2);
+
+    // Per-species minimum spawn level: the evolve_level of whatever evolves *into* this
+    // species. A Charizard's pre-evo Charmeleon evolves at Lv 36, so MIN_LEVEL["Charizard"]
+    // = 36 and we won't pick Charizard for a Lv-30 wild encounter. Species nobody evolves
+    // into default to 1 (base forms, single-stage species).
+    private static final Map<String, Integer> MIN_SPAWN_LEVEL = computeMinSpawnLevels();
+
+    private static Map<String, Integer> computeMinSpawnLevels() {
+        Map<String, Integer> out = new HashMap<>();
+        for (String[] row : CACHE.values()) {
+            if (row.length <= 23) continue;
+            String into = row[22].trim();
+            if (into.isEmpty()) continue;
+            int level;
+            try { level = Integer.parseInt(row[23].trim()); }
+            catch (NumberFormatException e) { continue; }
+            // If multiple species evolve into the same target (rare, e.g., Eevee chains),
+            // take the LOWEST evolve level so the target is still encounterable as early
+            // as any pre-evo could justify.
+            Integer cur = out.get(into);
+            if (cur == null || level < cur) out.put(into, level);
+        }
+        return out;
+    }
+
+    private static int minSpawnLevel(String name) {
+        Integer v = MIN_SPAWN_LEVEL.get(name);
+        return v == null ? 1 : v;
+    }
+
     private static Map<String, String[]> loadAll() {
         Map<String, String[]> map = new HashMap<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(CSV_PATH))) {
@@ -89,6 +127,38 @@ public class GetPokemon {
         return findPokemon(LEGENDARY_NAMES[RNG.nextInt(LEGENDARY_NAMES.length)], level);
     }
 
+    // Level-tiered wild encounter pick. The player's max party level decides which
+    // evolution-stage bucket we draw from (1..20 = base, 21..40 = mid, 41+ = final), and
+    // we then filter out species whose MIN_SPAWN_LEVEL exceeds encounterLevel — so e.g.
+    // a Lv 30 wild can't be a Charizard (Charmeleon evolves at 36). Falls back through
+    // wider pools if the strict filter empties out.
+    public Pokemon findRandomNormalPokemonForPartyMax(int encounterLevel, int partyMax) {
+        String[] bucket = bucketForPartyMax(partyMax);
+        String pick = pickFromBucketWithMinLevel(bucket, encounterLevel);
+        if (pick != null) return findPokemon(pick, encounterLevel);
+        // Bucket exhausted at this level — try every non-legendary species that's legal
+        // for this level (any stage) before degrading to "any species, no min filter".
+        pick = pickFromBucketWithMinLevel(NORMAL_NAMES, encounterLevel);
+        if (pick != null) return findPokemon(pick, encounterLevel);
+        return findRandomNormalPokemon(encounterLevel);
+    }
+
+    private static String pickFromBucketWithMinLevel(String[] pool, int encounterLevel) {
+        if (pool == null || pool.length == 0) return null;
+        List<String> eligible = new ArrayList<>();
+        for (String n : pool) {
+            if (minSpawnLevel(n) <= encounterLevel) eligible.add(n);
+        }
+        if (eligible.isEmpty()) return null;
+        return eligible.get(RNG.nextInt(eligible.size()));
+    }
+
+    private static String[] bucketForPartyMax(int partyMax) {
+        if (partyMax <= 20) return STAGE_BASE_NAMES;
+        if (partyMax <= 40) return STAGE_MID_NAMES;
+        return STAGE_FINAL_NAMES;
+    }
+
     // Walk the cached rows once at class-init and bucket names by is_legendary (col 21).
     private static String[] collectByLegendary(boolean legendary) {
         List<String> names = new ArrayList<>();
@@ -99,6 +169,36 @@ public class GetPokemon {
             if (isLeg == legendary) names.add(entry.getKey());
         }
         return names.toArray(new String[0]);
+    }
+
+    // Bucket non-legendary species by their position in an evolution chain.
+    //   stage 0 = base of a multi-stage chain (Charmander, Bulbasaur)
+    //   stage 1 = middle of a multi-stage chain (Charmeleon, Ivysaur)
+    //   stage 2 = final form of a chain *or* a single-stage species (Charizard, Tauros)
+    // A species is "the target of" something else iff some other row's evolves_into points
+    // at it. Walking forward via evolves_into tells us how many evolutions are ahead.
+    private static String[] collectByStage(int targetStage) {
+        java.util.Set<String> isEvolutionTarget = new java.util.HashSet<>();
+        for (String[] row : CACHE.values()) {
+            String into = row.length > 22 ? row[22].trim() : "";
+            if (!into.isEmpty()) isEvolutionTarget.add(into);
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, String[]> entry : CACHE.entrySet()) {
+            String[] row = entry.getValue();
+            if (row.length <= 21) continue;
+            if ("YES".equalsIgnoreCase(row[21])) continue; // legendaries excluded
+            String name = entry.getKey();
+            String into = row.length > 22 ? row[22].trim() : "";
+            boolean evolvesForward = !into.isEmpty();
+            boolean isTarget = isEvolutionTarget.contains(name);
+            int stage;
+            if (evolvesForward && !isTarget)       stage = 0; // base of multi-stage chain
+            else if (evolvesForward &&  isTarget)  stage = 1; // middle of chain
+            else                                   stage = 2; // final form OR single-stage
+            if (stage == targetStage) out.add(name);
+        }
+        return out.toArray(new String[0]);
     }
 
     private void assignPokemonInfo(Pokemon pokemon, String[] row, int level) {
