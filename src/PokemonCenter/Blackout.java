@@ -70,6 +70,9 @@ public class Blackout {
                         // Teleport + heal happens between dialog and fade-in so the screen
                         // is still fully black during the move (no jarring teleport flash).
                         respawnAndHeal();
+                        // Music was stopped at encounter end; resume now that the party is
+                        // fully healed and we're about to fade the world back in.
+                        gp.resumeMusic(3);
                         phase = Phase.FADE_IN;
                         frame = 0;
                     }

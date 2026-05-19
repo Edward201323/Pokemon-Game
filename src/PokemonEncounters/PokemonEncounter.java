@@ -121,9 +121,13 @@ public class PokemonEncounter {
         // custom dialog panel draws over the bottom area cleanly without needing space reserved.
         g2.drawImage(encounterBackgrounds[12], 0, 0, gp.screenWidth, gp.screenHeight, null);
 
-        //Enemy Pokemon
-        g2.drawImage(getPokemonImages.getPokemonFront(gp.wildPokemon),
-                     ENEMY_X, ENEMY_Y, ENEMY_W, ENEMY_H, null);
+        // For boss battles the boss sends out *after* the player (handled inside the
+        // encounter by BattleSystem). The enemy slot stays empty for the entire
+        // pre-encounter so the player throws first into an empty field.
+        if (!gp.isBossBattle) {
+            g2.drawImage(getPokemonImages.getPokemonFront(gp.wildPokemon),
+                         ENEMY_X, ENEMY_Y, ENEMY_W, ENEMY_H, null);
+        }
 
         drawBeforeEncounterAssets();
     }
@@ -132,8 +136,9 @@ public class PokemonEncounter {
     public void drawBeforeEncounterAssets() {
         counterB++;
 
-        if(ballThrown == false){
-            //Draw Dawn
+        // Draw Dawn until she throws (player throw runs the entire pre-encounter window
+        // for boss battles; standard wild encounters precede her with the "appeared" line).
+        if (ballThrown == false) {
             g2.drawImage(encounterAssets[9], TRAINER_X, TRAINER_Y, TRAINER_W, TRAINER_H, null);
         }
 
@@ -141,27 +146,38 @@ public class PokemonEncounter {
         // current HP directly (no animated easing yet, since the battle hasn't started).
         BattleSystem.drawEnemyPanel(g2, gp.wildPokemon, gp.wildPokemon.currentHP, MaruMonicaSmall);
 
-        // Pre-encounter dialog uses the same custom panel as the battle dialog.
         Pokemon leadForSendOut = gp.playerPokemon.pokemonEquipped.isEmpty()
             ? null : gp.playerPokemon.pokemonEquipped.get(0);
-        if(counterB<=150){
-            BattleSystem.drawDialogPanel(g2, "A wild "+gp.wildPokemon.name+" appeared!", MaruMonica,
-                                          gp.screenWidth, gp.screenHeight);
-        }
-        if(counterB>150){
+
+        if (gp.isBossBattle) {
+            // Boss flow: *player* sends out first into an empty enemy slot. After the
+            // encounter starts, BattleSystem handles the boss's send-out beat (ball +
+            // "???? sent out X!" + reveal).
             drawDawnThrowBall();
             ballThrown = true;
             String name = leadForSendOut == null ? "" : leadForSendOut.name;
-            BattleSystem.drawDialogPanel(g2, "Go! "+name+"!", MaruMonica,
+            BattleSystem.drawDialogPanel(g2, "Go! " + name + "!", MaruMonica,
                                           gp.screenWidth, gp.screenHeight);
+        } else {
+            // Wild flow: "A wild X appeared!" then player throw + "Go! Y!".
+            int introEndFrame = 150;
+            if (counterB <= introEndFrame) {
+                BattleSystem.drawDialogPanel(g2, "A wild " + gp.wildPokemon.name + " appeared!",
+                                              MaruMonica, gp.screenWidth, gp.screenHeight);
+            } else {
+                drawDawnThrowBall();
+                ballThrown = true;
+                String name = leadForSendOut == null ? "" : leadForSendOut.name;
+                BattleSystem.drawDialogPanel(g2, "Go! " + name + "!", MaruMonica,
+                                              gp.screenWidth, gp.screenHeight);
+            }
         }
 
 
         //Draw fade animation
         animations.FadeOut(g2);
     }
- 
- 
+
     private void drawDawnThrowBall(){
         counterA++;
         counterC++;
@@ -291,7 +307,24 @@ public class PokemonEncounter {
  
     private void endEncounter(){
         gp.stopMusic();
-        gp.resumeMusic(3);
+        // On a normal end, return to overworld music immediately. On a blackout, leave
+        // the music silent — Blackout will resume it once the party has been healed.
+        if (!gp.playerPokemon.isAllFainted()) {
+            gp.resumeMusic(3);
+        }
+        // If this was a boss battle and the player survived, the boss is defeated — remove
+        // it from the map so it can't be rebattled. On a loss the boss stays (you can try
+        // again after the blackout heal).
+        if (gp.isBossBattle && !gp.playerPokemon.isAllFainted() && gp.currentBoss != null) {
+            gp.obj.remove(gp.currentBoss);
+            // Boss reward: pretend the player "caught" a max-level Arceus. Lands in the
+            // party if there's a slot, otherwise the PC — same routing as a normal catch.
+            gp.playerPokemon.addPokemon("Arceus", 100);
+        }
+        gp.isBossBattle = false;
+        gp.bossQueue = null;
+        gp.bossIndex = 0;
+        gp.currentBoss = null;
 
         resetPokemonEquippedStats();
 

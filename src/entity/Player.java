@@ -23,10 +23,12 @@ public class Player extends Entity {
     private final PlayerObjectInteraction playerObjectInteraction;
     public final int screenX;
     public final int screenY;
-    // Track adjacency to the Pokemon Center tile so we only open the menu on entry, not
-    // every frame while standing there.
+    // Track adjacency to the Pokemon Center / Move Tutor tiles so we only open each menu
+    // on entry, not every frame while standing there.
     private boolean wasAdjacentToCenter;
+    private boolean wasAdjacentToTutor;
     private static final int POKEMON_CENTER_TILE = 193;
+    private static final int MOVE_TUTOR_TILE = 173;
 
     // Indexed [direction][frame]. "top" = upper half, "bottom" = lower half.
     private final BufferedImage[][] topSprites = new BufferedImage[4][SPRITE_FRAMES];
@@ -104,22 +106,29 @@ public class Player extends Entity {
             spriteCounter = 0;
         }
 
-        // Open the Pokemon Center on the frame the player steps from a non-adjacent tile
-        // into a tile that's directly above/below/left/right of tile 193.
-        boolean adj = isAdjacentToCenter();
-        if (adj && !wasAdjacentToCenter && gp.gameState == gp.playState) {
+        // Open the Pokemon Center / Move Tutor on the frame the player steps onto a tile
+        // orthogonally adjacent to their respective NPC tile (edge-detected so it doesn't
+        // re-open every frame).
+        boolean adjCenter = isAdjacentToTile(POKEMON_CENTER_TILE);
+        if (adjCenter && !wasAdjacentToCenter && gp.gameState == gp.playState) {
             gp.pokemonCenter.open();
         }
-        wasAdjacentToCenter = adj;
+        wasAdjacentToCenter = adjCenter;
+
+        boolean adjTutor = isAdjacentToTile(MOVE_TUTOR_TILE);
+        if (adjTutor && !wasAdjacentToTutor && gp.gameState == gp.playState) {
+            gp.moveTutor.open();
+        }
+        wasAdjacentToTutor = adjTutor;
     }
 
-    private boolean isAdjacentToCenter() {
+    private boolean isAdjacentToTile(int tileNum) {
         int col = (worldX + solidArea.x + solidArea.width  / 2) / gp.tileSize;
         int row = (worldY + solidArea.y + solidArea.height / 2) / gp.tileSize;
-        return tileEquals(col - 1, row, POKEMON_CENTER_TILE)
-            || tileEquals(col + 1, row, POKEMON_CENTER_TILE)
-            || tileEquals(col, row - 1, POKEMON_CENTER_TILE)
-            || tileEquals(col, row + 1, POKEMON_CENTER_TILE);
+        return tileEquals(col - 1, row, tileNum)
+            || tileEquals(col + 1, row, tileNum)
+            || tileEquals(col, row - 1, tileNum)
+            || tileEquals(col, row + 1, tileNum);
     }
 
     private boolean tileEquals(int col, int row, int tileNum) {

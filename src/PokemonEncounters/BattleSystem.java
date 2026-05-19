@@ -52,11 +52,8 @@ public class BattleSystem {
     // Switch-throw animation: reuses the trainer poses (encounterAssets 10..13) so the
     // player visually throws a ball when sending the new pokemon out, matching the
     // initial-encounter send-out.
-    private static final int SWITCH_POSE_FRAMES = 14;
-    private static final int SWITCH_POSE_COUNT = 4;
-    private static final int SWITCH_TOTAL_FRAMES = SWITCH_POSE_FRAMES * SWITCH_POSE_COUNT;
 
-    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, BALL_THROW, SWITCH_THROW, FAINT_ANIM, FINISHED }
+    private enum Phase { ENTRY, CHOOSE_ACTION, CHOOSE_MOVE, MESSAGE, BALL_THROW, FAINT_ANIM, FINISHED }
 
     private final GamePanel gp;
     private final KeyHandler keyH;
@@ -100,22 +97,54 @@ public class BattleSystem {
     private int shakeCount;          // 0-3 = wobbles before break, 4 = caught
     private Move postCatchEnemyMove; // a failed catch uses your turn — enemy attacks once after
     private BufferedImage ballImage;
+    // Greyscale variant of the pokeball used in the boss roster strip to indicate a
+    // fainted member. Lazily created from ballImage on construction.
+    private BufferedImage ballImageGrey;
 
     // Switch state. While true, PokemonEncounter skips drawing the player sprite so the
     // recall/throw animation reads as "the previous pokemon goes back, then the new one
     // emerges" without a hard cut between sprites mid-message.
     private boolean switchHidden;
-    private int switchFrame;
-    private Runnable afterSwitchThrow;
+
+    // Boss mid-battle send-out: while true, the enemy sprite is hidden and a static
+    // pokeball is drawn at the enemy position (matches the pre-encounter boss throw).
+    private boolean bossBallShowing;
+
+    // Player mid-battle send-out (trainer battles only): static pokeball at the player
+    // slot while "Go! X!" plays during a voluntary switch. Mirrors bossBallShowing on
+    // the player side. Wild encounters keep the simpler ball-less switch.
+    private boolean playerBallShowing;
 
     public BattleSystem(GamePanel gp, KeyHandler keyH) {
         this.gp = gp;
         this.keyH = keyH;
         try {
             this.ballImage = ImageIO.read(new File("./src/res/objects/pokeball.png"));
+            this.ballImageGrey = greyscale(this.ballImage);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    // Convert a color image into a desaturated, slightly dimmed grey version. Used to
+    // render fainted-pokemon pokeballs in the boss roster strip (matches mainline games).
+    private static BufferedImage greyscale(BufferedImage src) {
+        if (src == null) return null;
+        BufferedImage out = new BufferedImage(src.getWidth(), src.getHeight(),
+                                              BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < src.getHeight(); y++) {
+            for (int x = 0; x < src.getWidth(); x++) {
+                int rgba = src.getRGB(x, y);
+                int a = (rgba >> 24) & 0xff;
+                int r = (rgba >> 16) & 0xff;
+                int g = (rgba >>  8) & 0xff;
+                int b =  rgba        & 0xff;
+                int grey = (int) ((r + g + b) / 3 * 0.72); // dim a hair so it reads as "off"
+                if (grey > 255) grey = 255;
+                out.setRGB(x, y, (a << 24) | (grey << 16) | (grey << 8) | grey);
+            }
+        }
+        return out;
     }
 
     public void start() {
@@ -139,8 +168,10 @@ public class BattleSystem {
         shakeCount = 0;
         postCatchEnemyMove = null;
         switchHidden = false;
-        switchFrame = 0;
-        afterSwitchThrow = null;
+        playerBallShowing = false;
+        // Boss battles open with the boss-throw beat — hide the enemy from frame 1 so
+        // the first draw doesn't flash the pokemon before the ENTRY transition fires.
+        bossBallShowing = gp.isBossBattle;
         // Initial send-out: skip any fainted lead so we never put a 0-HP pokemon on the field.
         int firstLive = firstLiveIndex();
         if (firstLive < 0) {
@@ -177,7 +208,7 @@ public class BattleSystem {
 
     // True while the thrown ball is sitting on the enemy. PokemonEncounter checks this
     // to skip drawing the wild sprite so the ball reads as "containing" it.
-    public boolean enemyHiddenByBall() { return enemyHidden; }
+    public boolean enemyHiddenByBall() { return enemyHidden || bossBallShowing; }
 
     // Which party member is actually on the field. PokemonEncounter uses this so the
     // sprite reflects switches (instead of always drawing pokemonEquipped.get(0)).
@@ -191,7 +222,7 @@ public class BattleSystem {
     // True while a switch is mid-animation: the outgoing pokemon has returned to its ball
     // and the new one hasn't been thrown out yet. PokemonEncounter skips the player sprite
     // for these frames so the active sprite doesn't snap from old to new.
-    public boolean playerHiddenForSwitch() { return switchHidden; }
+    public boolean playerHiddenForSwitch() { return switchHidden || playerBallShowing; }
 
     // Active party slot — switching changes this instead of mutating the party list,
     // so other systems (PC viewer, party menu) still see a consistent ordering.
@@ -219,7 +250,13 @@ public class BattleSystem {
         easeHpBars();
 
         if (phase == Phase.ENTRY) {
-            phase = Phase.CHOOSE_ACTION;
+            // Boss battles open with the boss's send-out beat (ball + "???? sent out X!").
+            // Wild encounters jump straight to the action menu.
+            if (gp.isBossBattle) {
+                initBossSendOut();
+            } else {
+                phase = Phase.CHOOSE_ACTION;
+            }
             return;
         }
         if (phase == Phase.MESSAGE) {
@@ -261,20 +298,6 @@ public class BattleSystem {
                     // level-up) and queue the messages before transitioning to FINISHED.
                     giveExpAndFinish();
                 }
-            }
-            return;
-        }
-        if (phase == Phase.SWITCH_THROW) {
-            switchFrame++;
-            // Throw SFX fires partway through, matching drawDawnThrowBall's beat at the
-            // start of pose 2 (where the trainer releases the ball).
-            if (switchFrame == SWITCH_POSE_FRAMES) {
-                gp.playSE(0);
-            }
-            if (switchFrame >= SWITCH_TOTAL_FRAMES) {
-                Runnable r = afterSwitchThrow;
-                afterSwitchThrow = null;
-                if (r != null) r.run();
             }
             return;
         }
@@ -359,7 +382,22 @@ public class BattleSystem {
 
     private void handleActionInput() {
         if (justZ)      phase = Phase.CHOOSE_MOVE;                     // Fight
-        else if (justX) startBallThrow();                              // Bag = throw Poke Ball
+        else if (justX) {
+            // CATCH disabled during a trainer battle — bosses can't be caught.
+            if (gp.isBossBattle) {
+                queue("You can't catch a trainer's Pokemon!", () -> phase = Phase.CHOOSE_ACTION);
+            } else {
+                startBallThrow();
+            }
+        }
+        else if (justV) {
+            // Likewise, RUN is disabled during a boss battle (matches mainline trainer fights).
+            if (gp.isBossBattle) {
+                queue("You can't run from a trainer battle!", () -> phase = Phase.CHOOSE_ACTION);
+            } else {
+                queue("You got away safely!", () -> phase = Phase.FINISHED);
+            }
+        }
         else if (justC) {
             // Pokemon: open the party selector. If no other teammate can fight, surface
             // a message instead of opening an empty menu.
@@ -369,7 +407,6 @@ public class BattleSystem {
                 openSwitchMenu(true);
             }
         }
-        else if (justV) queue("You got away safely!",              () -> phase = Phase.FINISHED);
     }
 
     // Open the party menu in selection mode. Voluntary switches are cancellable and cost
@@ -395,34 +432,44 @@ public class BattleSystem {
         activeIndex = newIndex;
         Pokemon nw = player();
         displayedPlayerHP = nw.currentHP;
-        // Player sprite stays hidden during the recall + trainer throw; we flip it back on
-        // when the trainer animation finishes so the new pokemon emerges on the field.
-        switchHidden = true;
-        Runnable revealNew = forced
-            ? () -> {
-                  switchHidden = false;
-                  queue("Go! " + nw.name + "!", () -> phase = Phase.CHOOSE_ACTION);
-              }
-            : () -> {
-                  switchHidden = false;
-                  queue("Go! " + nw.name + "!", () -> {
-                      doEnemyAttack(enemyMove);
-                      then(this::afterEnemyAttack);
-                  });
-              };
+        // Voluntary switches hide the player sprite while the "Come back" line plays, then
+        // reveal the new pokemon when the "Go!" line starts. Forced switches (post-faint)
+        // just send the new one out — the previous already fainted into the ground.
         if (forced) {
-            // Forced switch (post-faint): the previous pokemon already dropped during
-            // FAINT_ANIM, so go straight into the trainer-throw animation.
-            startSwitchThrow(revealNew);
+            // Post-faint send-out: same ball + SE beat as a voluntary trainer-battle
+            // switch. Sprite stays hidden via playerBallShowing until the message drains.
+            switchHidden = false;
+            playerBallShowing = true;
+            queue("Go! " + nw.name + "!", () -> {
+                playerBallShowing = false;
+                gp.playSE(0); // pokeball open SFX as the pokemon emerges
+                phase = Phase.CHOOSE_ACTION;
+            });
+        } else if (gp.isBossBattle) {
+            // Trainer battles: throw a pokeball into the player slot before the new mon
+            // appears, mirroring the boss's mid-battle send-out beat. SE fires when the
+            // "Go! Y!" message drains so the click syncs with the pokemon emerging.
+            switchHidden = true;
+            queue("Come back, " + old.name + "!", () -> {
+                playerBallShowing = true;
+                queue("Go! " + nw.name + "!", () -> {
+                    playerBallShowing = false;
+                    switchHidden = false;
+                    gp.playSE(0); // pokeball open SFX as the pokemon emerges
+                    doEnemyAttack(enemyMove);
+                    then(this::afterEnemyAttack);
+                });
+            });
         } else {
-            queue("Come back, " + old.name + "!", () -> startSwitchThrow(revealNew));
+            switchHidden = true;
+            queue("Come back, " + old.name + "!", () -> {
+                switchHidden = false;
+                queue("Go! " + nw.name + "!", () -> {
+                    doEnemyAttack(enemyMove);
+                    then(this::afterEnemyAttack);
+                });
+            });
         }
-    }
-
-    private void startSwitchThrow(Runnable after) {
-        phase = Phase.SWITCH_THROW;
-        switchFrame = 0;
-        afterSwitchThrow = after;
     }
 
     // After the enemy's faint animation, award EXP to every non-fainted party member
@@ -464,9 +511,30 @@ public class BattleSystem {
         }
         if (active != null) displayedPlayerHP = active.currentHP;
 
-        Runnable finish = () -> phase = Phase.FINISHED;
+        // In a boss battle, the encounter only ends after every roster member is down.
+        // Otherwise we send out the boss's next pokemon and resume CHOOSE_ACTION.
+        boolean bossHasMore = gp.isBossBattle
+                && gp.bossQueue != null
+                && gp.bossIndex + 1 < gp.bossQueue.size();
+
+        Runnable finish;
+        if (bossHasMore) {
+            finish = this::sendNextBossPokemon;
+        } else if (gp.isBossBattle) {
+            // Boss's last pokemon just fainted — multi-line defeat speech, then FINISHED.
+            finish = () -> {
+                queue(object.OBJ_Boss.DISPLAY_NAME + " was defeated!", null);
+                queue("...impossible.", null);
+                queue("How could I lose... to myself?", null);
+                queue("We will meet again, in another life.",
+                      () -> phase = Phase.FINISHED);
+            };
+        } else {
+            finish = () -> phase = Phase.FINISHED;
+        }
+
         if (sharedCount == 0) {
-            phase = Phase.FINISHED;
+            finish.run();
             return;
         }
         String activeName = (active != null) ? active.name : "Your Pokemon";
@@ -479,6 +547,30 @@ public class BattleSystem {
             boolean last = (i == followLines.size() - 1);
             queue(followLines.get(i), last ? finish : null);
         }
+    }
+
+    // Mid-battle: swap in the next pokemon from the boss's roster.
+    private void sendNextBossPokemon() {
+        gp.bossIndex++;
+        gp.wildPokemon = gp.bossQueue.get(gp.bossIndex);
+        initBossSendOut();
+    }
+
+    // Boss-throw beat for whichever pokemon is currently at gp.wildPokemon. Pokeball is
+    // visible (and the pokemon hidden) while the "???? sent out X!" line plays; on drain
+    // the ball clears, the SE plays, and we hand control to CHOOSE_ACTION.
+    private void initBossSendOut() {
+        Pokemon e = enemy();
+        displayedEnemyHP = e.currentHP;
+        enemyHidden = false;
+        enemyFainting = false;
+        faintFrame = 0;
+        bossBallShowing = true;
+        queue(object.OBJ_Boss.DISPLAY_NAME + " sent out " + e.name + "!", () -> {
+            bossBallShowing = false;
+            gp.playSE(0); // pokeball open SFX as the pokemon emerges
+            phase = Phase.CHOOSE_ACTION;
+        });
     }
 
     // In-place evolve: replace `p`'s species data with the evolved form (looked up by
@@ -507,7 +599,8 @@ public class BattleSystem {
         p.expGiven      = evolved.expGiven;
         p.evolvesInto   = evolved.evolvesInto;
         p.evolveLevel   = evolved.evolveLevel;
-        p.moves         = evolved.moves;
+        // Keep p.moves as-is so player customizations survive evolution. If the evolved
+        // form gains a new type, the player can pick up moves of that type at the tutor.
         p.recalcStats();
         return true;
     }
@@ -692,9 +785,10 @@ public class BattleSystem {
         Pokemon e = enemy();
         if (catchSuccess) {
             // Ball stays sitting on the (hidden) enemy through the verdict and the fade.
+            // EXP is awarded the same way as a defeat — Exp Share splits to the party.
             queue("Gotcha! " + e.name + " was caught!", () -> {
                 gp.playerPokemon.addPokemonCaught();
-                phase = Phase.FINISHED;
+                giveExpAndFinish();
             });
         } else {
             // Ball pops open: hide the ball, bring the enemy back, then the canonical breakaway line.
@@ -742,6 +836,8 @@ public class BattleSystem {
         // Custom HP panels reflect the *active* pokemon (post-switch sprites + stats).
         drawEnemyPanel(g2, enemy(), displayedEnemyHP, smallFont);
         drawPlayerPanel(g2, player(), displayedPlayerHP, smallFont);
+        // Boss-only: row of pokeballs showing how many roster members remain.
+        if (gp.isBossBattle && gp.bossQueue != null) drawBossPokeballs(g2, smallFont);
 
         if (phase == Phase.CHOOSE_ACTION) {
             drawActionMenu(g2, encounterAssets, bigFont);
@@ -751,24 +847,65 @@ public class BattleSystem {
                    && !currentMessage.isEmpty()) {
             drawDialogPanel(g2, currentMessage, bigFont, gp.screenWidth, gp.screenHeight);
         }
-        // Switch throw: trainer poses (encounterAssets 10..13) at the player area while
-        // the active pokemon is hidden. After the animation the new pokemon emerges.
-        if (phase == Phase.SWITCH_THROW) {
-            int pose = Math.min(SWITCH_POSE_COUNT - 1, switchFrame / SWITCH_POSE_FRAMES);
-            int assetIdx = 10 + pose;
-            if (assetIdx < encounterAssets.length && encounterAssets[assetIdx] != null) {
-                g2.drawImage(encounterAssets[assetIdx],
-                             PokemonEncounter.TRAINER_X, PokemonEncounter.TRAINER_Y,
-                             PokemonEncounter.TRAINER_W, PokemonEncounter.TRAINER_H, null);
-            }
-        }
         // The ball overlays everything else (incl. the dialog box on "Gotcha!") whenever it's in play.
         drawBall(g2);
+        // Boss send-out mid-battle: pokeball only at the enemy slot (no boss portrait).
+        // Mirrors PokemonEncounter.drawBossSendOutBall for the initial send-out so every
+        // send-out (initial + each subsequent) reads the same.
+        if (bossBallShowing && ballImage != null) {
+            int size = 80;
+            int cx = PokemonEncounter.ENEMY_X + PokemonEncounter.ENEMY_W / 2;
+            int cy = PokemonEncounter.ENEMY_Y + PokemonEncounter.ENEMY_H / 2;
+            g2.drawImage(ballImage, cx - size / 2, cy - size / 2, size, size, null);
+        }
+        // Player switch send-out (trainer battles): same static-ball treatment as the
+        // boss side so the player throw reads symmetrically.
+        if (playerBallShowing && ballImage != null) {
+            int size = 80;
+            int cx = PokemonEncounter.PLAYER_X + PokemonEncounter.PLAYER_W / 2;
+            int cy = PokemonEncounter.PLAYER_Y + PokemonEncounter.PLAYER_H / 2;
+            g2.drawImage(ballImage, cx - size / 2, cy - size / 2, size, size, null);
+        }
+    }
+
+    // Pokeball roster strip drawn above the enemy HP panel during boss battles.
+    // Red = still alive, grey = fainted. Slot order mirrors gp.bossQueue.
+    private void drawBossPokeballs(Graphics2D g2, Font font) {
+        java.util.List<Pokemon> roster = gp.bossQueue;
+        if (roster == null || roster.isEmpty()) return;
+        int n = roster.size();
+        int ballSize = 22;
+        int gap = 6;
+        int padX = 12, padY = 4;
+        int barW = n * ballSize + (n - 1) * gap + padX * 2;
+        int barH = ballSize + padY * 2;
+        int x = 32;
+        int y = 4;
+        // Background plate (matches the dark panel style elsewhere).
+        g2.setPaint(new java.awt.GradientPaint(0, y, new Color(18, 28, 40, 230),
+                                                0, y + barH, new Color(8, 14, 22, 230)));
+        g2.fillRoundRect(x, y, barW, barH, 12, 12);
+        Stroke prev = g2.getStroke();
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(new Color(90, 130, 170, 200));
+        g2.drawRoundRect(x, y, barW, barH, 12, 12);
+        g2.setStroke(prev);
+
+        for (int i = 0; i < n; i++) {
+            Pokemon p = roster.get(i);
+            boolean alive = p != null && p.currentHP > 0;
+            BufferedImage img = alive ? ballImage : ballImageGrey;
+            int bx = x + padX + i * (ballSize + gap);
+            int by = y + padY;
+            if (img != null) {
+                g2.drawImage(img, bx, by, ballSize, ballSize, null);
+            }
+        }
     }
 
     // ---- Custom HP panels (static so PokemonEncounter can call them pre-battle too). ----
 
-    // Enemy panel: top-left, name + Lv + HP bar (no number text — matches mainline games).
+    // Enemy panel: top-left, name + gender + Lv + HP bar (no number text — matches mainline games).
     public static void drawEnemyPanel(Graphics2D g2, Pokemon enemy, double displayedHp, Font font) {
         if (enemy == null) return;
         int x = 32, y = 32, w = 370, h = 92;
@@ -776,6 +913,8 @@ public class BattleSystem {
         if (font != null) g2.setFont(font);
         g2.setColor(Color.white);
         g2.drawString(enemy.name, x + 20, y + 32);
+        int nameW = g2.getFontMetrics().stringWidth(enemy.name);
+        drawGender(g2, enemy.gender, x + 20 + nameW + 8, y + 32);
         String lv = "Lv " + enemy.level;
         int lvW = g2.getFontMetrics().stringWidth(lv);
         g2.setColor(new Color(220, 230, 240));
@@ -792,12 +931,32 @@ public class BattleSystem {
         if (font != null) g2.setFont(font);
         g2.setColor(Color.white);
         g2.drawString(p.name, x + 18, y + 26);
+        int nameW = g2.getFontMetrics().stringWidth(p.name);
+        drawGender(g2, p.gender, x + 18 + nameW + 8, y + 26);
         String lv = "Lv " + p.level;
         int lvW = g2.getFontMetrics().stringWidth(lv);
         g2.setColor(new Color(220, 230, 240));
         g2.drawString(lv, x + w - lvW - 16, y + 26);
         drawHpRow(g2, displayedHp, p.maxHP, x + 18, y + 46, w - 36, 11, font, true);
         drawExpRow(g2, p, x + 18, y + h - 14, w - 36, 6, font);
+    }
+
+    // Small gender glyph next to the name. Drawn in the system Dialog font so the ♂/♀
+    // characters render even if MaruMonica's glyph set doesn't cover them. No-op for
+    // genderless pokemon.
+    public static void drawGender(Graphics2D g2, String gender, int x, int y) {
+        if (gender == null) return;
+        String sym;
+        Color col;
+        if ("Male".equalsIgnoreCase(gender))        { sym = "♂"; col = new Color(110, 180, 255); }
+        else if ("Female".equalsIgnoreCase(gender)) { sym = "♀"; col = new Color(255, 130, 180); }
+        else return;
+        Font prev = g2.getFont();
+        int pt = prev != null ? prev.getSize() : 22;
+        g2.setFont(new Font(Font.DIALOG, Font.BOLD, pt));
+        g2.setColor(col);
+        g2.drawString(sym, x, y);
+        if (prev != null) g2.setFont(prev);
     }
 
     private static void drawExpRow(Graphics2D g2, Pokemon p,

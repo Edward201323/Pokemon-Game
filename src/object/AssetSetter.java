@@ -20,6 +20,16 @@ public class AssetSetter {
         gp.obj.get(gp.obj.size()-1).worldX = 10 * gp.tileSize;
         gp.obj.get(gp.obj.size()-1).worldY = 10 * gp.tileSize;
 
+        // Trainer boss "????" in the top-right walkable strip. End-game roster: six
+        // legendaries at level 100. Optimal movesets fall out of the type-based picker
+        // automatically (top-half tier bias at Lv 100 selects only end-game moves).
+        // NOTE: every species name here must exist in PokemonStats.csv or it'll be
+        // silently skipped during the roster build.
+        gp.obj.add(OBJ_Boss.withTeam(100,
+            "Xerneas", "Groudon", "Kyogre", "Rayquaza", "Mewtwo", "Arceus"));
+        gp.obj.get(gp.obj.size()-1).worldX = 38 * gp.tileSize;
+        gp.obj.get(gp.obj.size()-1).worldY = 11 * gp.tileSize;
+
         loadBushes("Route1.txt", 5);
     }
 

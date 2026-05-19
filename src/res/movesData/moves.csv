@@ -1,19 +1,151 @@
-Type,Physical Move,Physical Base Power,Physical Accuracy,Special Move,Special Base Power,Special Accuracy
-Normal,Body Slam,85,100,Hyper Beam,150,90
-Fire,Flare Blitz,120,100,Flamethrower,90,100
-Water,Wave Crash,120,100,Surf,90,100
-Electric,Wild Charge,90,100,Thunderbolt,90,100
-Grass,Leaf Blade,90,100,Solar Beam,120,100
-Ice,Icicle Crash,85,90,Ice Beam,90,100
-Fighting,Close Combat,120,100,Aura Sphere,80,Always Hits
-Poison,Gunk Shot,120,80,Sludge Bomb,90,100
-Ground,Earthquake,100,100,Earth Power,90,100
-Flying,Brave Bird,120,100,Hurricane,110,70
-Psychic,Zen Headbutt,80,90,Psychic,90,100
-Bug,X-Scissor,80,100,Bug Buzz,90,100
-Rock,Stone Edge,100,80,Power Gem,80,100
-Ghost,Shadow Claw,70,100,Shadow Ball,80,100
-Dragon,Outrage,120,100,Draco Meteor,130,90
-Dark,Knock Off,65,100,Dark Pulse,80,100
-Steel,Iron Head,80,100,Flash Cannon,80,100
-Fairy,Play Rough,90,90,Moonblast,95,100
+type,name,power,accuracy,physical,min_level
+Normal,Tackle,40,100,true,1
+Normal,Quick Attack,40,100,true,1
+Normal,Slash,70,100,true,20
+Normal,Body Slam,85,100,true,30
+Normal,Double-Edge,120,100,true,45
+Normal,Giga Impact,150,90,true,55
+Normal,Swift,60,Always Hits,false,10
+Normal,Tri Attack,80,100,false,25
+Normal,Hyper Voice,90,100,false,35
+Normal,Hyper Beam,150,90,false,55
+Fire,Ember,40,100,false,1
+Fire,Flame Wheel,60,100,true,10
+Fire,Fire Fang,65,95,true,15
+Fire,Fire Punch,75,100,true,20
+Fire,Flamethrower,90,100,false,30
+Fire,Heat Wave,95,90,false,35
+Fire,Fire Blast,110,85,false,45
+Fire,Flare Blitz,120,100,true,50
+Water,Aqua Jet,40,100,true,1
+Water,Water Gun,40,100,false,1
+Water,Bubble Beam,65,100,false,10
+Water,Waterfall,80,100,true,20
+Water,Aqua Tail,90,90,true,30
+Water,Surf,90,100,false,30
+Water,Hydro Pump,110,80,false,45
+Water,Wave Crash,120,100,true,50
+Grass,Vine Whip,45,100,true,1
+Grass,Mega Drain,40,100,false,5
+Grass,Razor Leaf,55,95,true,10
+Grass,Giga Drain,75,100,false,25
+Grass,Leaf Blade,90,100,true,30
+Grass,Energy Ball,90,100,false,30
+Grass,Solar Beam,120,100,false,45
+Grass,Wood Hammer,120,100,true,50
+Electric,Thunder Shock,40,100,false,1
+Electric,Spark,65,100,true,10
+Electric,Thunder Punch,75,100,true,20
+Electric,Discharge,80,100,false,25
+Electric,Thunderbolt,90,100,false,30
+Electric,Wild Charge,90,100,true,35
+Electric,Thunder,110,70,false,45
+Electric,Volt Tackle,120,100,true,50
+Ice,Ice Shard,40,100,true,1
+Ice,Powder Snow,40,100,false,1
+Ice,Icy Wind,55,95,false,10
+Ice,Avalanche,60,100,true,15
+Ice,Ice Punch,75,100,true,20
+Ice,Ice Beam,90,100,false,30
+Ice,Icicle Crash,85,90,true,30
+Ice,Blizzard,110,70,false,45
+Fighting,Karate Chop,50,100,true,1
+Fighting,Low Kick,50,100,true,1
+Fighting,Vacuum Wave,40,100,false,5
+Fighting,Brick Break,75,100,true,20
+Fighting,Aura Sphere,80,Always Hits,false,25
+Fighting,Cross Chop,100,80,true,35
+Fighting,Focus Blast,120,70,false,45
+Fighting,Close Combat,120,100,true,50
+Poison,Poison Sting,15,100,true,1
+Poison,Acid,40,100,false,1
+Poison,Poison Fang,50,100,true,10
+Poison,Sludge,65,100,false,15
+Poison,Poison Jab,80,100,true,25
+Poison,Sludge Bomb,90,100,false,30
+Poison,Sludge Wave,95,100,false,40
+Poison,Gunk Shot,120,80,true,45
+Ground,Mud Slap,20,100,false,1
+Ground,Mud Shot,55,95,false,10
+Ground,Bulldoze,60,100,true,10
+Ground,Mud Bomb,65,85,false,15
+Ground,Dig,80,100,true,25
+Ground,Drill Run,80,95,true,30
+Ground,Earth Power,90,100,false,30
+Ground,Earthquake,100,100,true,35
+Flying,Peck,35,100,true,1
+Flying,Gust,40,100,false,1
+Flying,Wing Attack,60,100,true,10
+Flying,Aerial Ace,60,Always Hits,true,15
+Flying,Air Cutter,60,95,false,15
+Flying,Air Slash,75,95,false,20
+Flying,Drill Peck,80,100,true,25
+Flying,Hurricane,110,70,false,45
+Flying,Brave Bird,120,100,true,50
+Psychic,Confusion,50,100,false,1
+Psychic,Psybeam,65,100,false,10
+Psychic,Psycho Cut,70,100,true,15
+Psychic,Zen Headbutt,80,90,true,20
+Psychic,Psyshock,80,100,false,25
+Psychic,Psychic,90,100,false,30
+Psychic,Psychic Fangs,85,100,true,30
+Psychic,Future Sight,120,100,false,50
+Bug,Fury Cutter,40,95,true,1
+Bug,Struggle Bug,50,100,false,5
+Bug,Bug Bite,60,100,true,10
+Bug,Silver Wind,60,100,false,15
+Bug,Signal Beam,75,100,false,20
+Bug,X-Scissor,80,100,true,25
+Bug,Bug Buzz,90,100,false,30
+Bug,Megahorn,120,85,true,45
+Rock,Rock Throw,50,90,true,1
+Rock,Rollout,30,90,true,5
+Rock,Rock Tomb,60,95,true,10
+Rock,Ancient Power,60,100,false,15
+Rock,Rock Slide,75,90,true,20
+Rock,Power Gem,80,100,false,25
+Rock,Stone Edge,100,80,true,35
+Rock,Meteor Beam,120,90,false,45
+Rock,Head Smash,150,80,true,50
+Ghost,Lick,30,100,true,1
+Ghost,Astonish,30,100,true,1
+Ghost,Night Shade,60,100,false,5
+Ghost,Shadow Punch,60,Always Hits,true,10
+Ghost,Hex,65,100,false,15
+Ghost,Shadow Claw,70,100,true,20
+Ghost,Shadow Ball,80,100,false,25
+Ghost,Phantom Force,90,100,true,35
+Dragon,Twister,40,100,false,1
+Dragon,Dragon Breath,60,100,false,10
+Dragon,Dragon Tail,60,90,true,15
+Dragon,Dragon Claw,80,100,true,25
+Dragon,Dragon Pulse,85,100,false,30
+Dragon,Dragon Rush,100,75,true,35
+Dragon,Outrage,120,100,true,45
+Dragon,Draco Meteor,130,90,false,50
+Dark,Pursuit,40,100,true,1
+Dark,Bite,60,100,true,10
+Dark,Feint Attack,60,Always Hits,true,10
+Dark,Snarl,55,95,false,10
+Dark,Knock Off,65,100,true,15
+Dark,Night Slash,70,100,true,20
+Dark,Crunch,80,100,true,25
+Dark,Dark Pulse,80,100,false,25
+Dark,Foul Play,95,100,true,30
+Dark,Night Daze,85,95,false,35
+Steel,Bullet Punch,40,100,true,1
+Steel,Metal Claw,50,95,true,1
+Steel,Magnet Bomb,60,Always Hits,false,10
+Steel,Mirror Shot,65,85,false,15
+Steel,Iron Head,80,100,true,25
+Steel,Flash Cannon,80,100,false,25
+Steel,Meteor Mash,90,90,true,30
+Steel,Iron Tail,100,75,true,35
+Steel,Steel Beam,140,95,false,50
+Fairy,Fairy Wind,40,100,false,1
+Fairy,Disarming Voice,40,Always Hits,false,5
+Fairy,Draining Kiss,50,100,false,10
+Fairy,Dazzling Gleam,80,100,false,20
+Fairy,Play Rough,90,90,true,25
+Fairy,Spirit Break,75,100,true,25
+Fairy,Moonblast,95,100,false,35

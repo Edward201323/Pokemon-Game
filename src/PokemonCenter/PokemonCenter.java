@@ -51,9 +51,10 @@ public class PokemonCenter {
     private int pcIndex;
     private List<Pokemon> pcCache;
 
-    // Edge detection so held keys don't auto-fire. justConfirm = Enter or Z (Enter is primary).
-    private boolean prevZ, prevX, prevUp, prevDown, prevP, prevEnter;
-    private boolean justConfirm, justX, justUp, justDown, justP;
+    // Edge detection so held keys don't auto-fire. Enter is the only confirm key (so Z
+    // can't be accidentally pressed instead). ESC is the universal exit.
+    private boolean prevUp, prevDown, prevP, prevEnter, prevEsc;
+    private boolean justConfirm, justEsc, justUp, justDown, justP;
 
     private Font bigFont, smallFont;
 
@@ -83,9 +84,8 @@ public class PokemonCenter {
         gp.gameState = gp.pokemonCenterState;
         phase = Phase.INTRO;
         // Seed prev* with current state so a key already held when opening must be released first.
-        prevZ = keyH.zPressed;
         prevEnter = keyH.enterPressed;
-        prevX = keyH.xPressed;
+        prevEsc = keyH.escPressed;
         prevP = keyH.pPressed;
         prevUp = keyH.upPressed;
         prevDown = keyH.downPressed;
@@ -145,17 +145,15 @@ public class PokemonCenter {
     // ----- input helpers -----
 
     private void sampleEdges() {
-        // Enter is primary confirm, Z stays as an alternative.
-        boolean justZ = keyH.zPressed && !prevZ;
-        boolean justEnter = keyH.enterPressed && !prevEnter;
-        justConfirm = justZ || justEnter;
-        justX = keyH.xPressed && !prevX;
+        // Enter is the only confirm — Z is intentionally ignored so it can't be pressed
+        // by mistake when navigating dialog / menu. ESC is the universal exit.
+        justConfirm = keyH.enterPressed && !prevEnter;
+        justEsc = keyH.escPressed && !prevEsc;
         justP = keyH.pPressed && !prevP;
         justUp = keyH.upPressed && !prevUp;
         justDown = keyH.downPressed && !prevDown;
-        prevZ = keyH.zPressed;
         prevEnter = keyH.enterPressed;
-        prevX = keyH.xPressed;
+        prevEsc = keyH.escPressed;
         prevP = keyH.pPressed;
         prevUp = keyH.upPressed;
         prevDown = keyH.downPressed;
@@ -163,11 +161,10 @@ public class PokemonCenter {
 
     // External hook so callers (e.g. the party selector's swap callback) can resync our
     // edge-detection state when control returns to us. Without this, prev* may reflect
-    // key state from many frames ago and the first X/Enter press can be missed.
+    // key state from many frames ago and the first ESC/Enter press can be missed.
     public void refreshInput() {
-        prevZ = keyH.zPressed;
         prevEnter = keyH.enterPressed;
-        prevX = keyH.xPressed;
+        prevEsc = keyH.escPressed;
         prevP = keyH.pPressed;
         prevUp = keyH.upPressed;
         prevDown = keyH.downPressed;
@@ -176,7 +173,7 @@ public class PokemonCenter {
     private void handleMenuInput() {
         if (justUp)   menuIndex = (menuIndex + MENU_LABELS.length - 1) % MENU_LABELS.length;
         if (justDown) menuIndex = (menuIndex + 1) % MENU_LABELS.length;
-        if (justX) { close(); return; }
+        if (justEsc) { close(); return; }
         if (!justConfirm) return;
         switch (menuIndex) {
             case 0: startHeal(); break;
@@ -187,47 +184,38 @@ public class PokemonCenter {
 
     private void handlePcInput() {
         if (pcCache == null || pcCache.isEmpty()) {
-            if (justConfirm || justX || justP) close();
+            if (justConfirm || justEsc || justP) close();
             return;
         }
         if (justUp)   pcIndex = (pcIndex + pcCache.size() - 1) % pcCache.size();
         if (justDown) pcIndex = (pcIndex + 1) % pcCache.size();
-        if (justX || justP) { close(); return; }
+        if (justEsc || justP) { close(); return; }
         if (justConfirm) {
             // Enter/Z on a PC entry: open the party UI to pick which slot to swap with.
-            final int allIdx = pcIndex;
+            final int pcIdx = pcIndex;
             gp.openPlayerInventory.openInSelectionMode(
                 "Swap with which Pokemon?",
                 true,
                 slot -> true,
-                partySlot -> { performPcSwap(allIdx, partySlot); refreshInput(); },
+                partySlot -> { performPcSwap(pcIdx, partySlot); refreshInput(); },
                 this::refreshInput
             );
         }
     }
 
-    // Swap the pokemon at the "all caught" index with the party slot. If the source is itself
-    // in the party, this is a reorder; otherwise the party member is sent to PC storage and
-    // the PC pokemon takes the slot.
-    private void performPcSwap(int allIdx, int partySlot) {
+    // Swap the pokemon at PC index `pcIdx` with the party slot. The party member is sent
+    // to PC storage and the PC pokemon takes the slot.
+    private void performPcSwap(int pcIdx, int partySlot) {
         java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
         java.util.List<Pokemon> box = gp.playerPokemon.pokemonInPC;
         if (partySlot < 0 || partySlot >= party.size()) return;
+        if (pcIdx < 0 || pcIdx >= box.size()) return;
         Pokemon partyMon = party.get(partySlot);
-        if (allIdx < party.size()) {
-            // Source is also a party slot — just swap positions in the party list.
-            Pokemon src = party.get(allIdx);
-            party.set(allIdx, partyMon);
-            party.set(partySlot, src);
-        } else {
-            int boxIdx = allIdx - party.size();
-            if (boxIdx < 0 || boxIdx >= box.size()) return;
-            Pokemon src = box.get(boxIdx);
-            box.set(boxIdx, partyMon);
-            party.set(partySlot, src);
-        }
-        // Rebuild the snapshot and keep the cursor on the same row (clamped to the new size).
-        pcCache = gp.playerPokemon.allCaughtPokemon();
+        Pokemon pcMon = box.get(pcIdx);
+        box.set(pcIdx, partyMon);
+        party.set(partySlot, pcMon);
+        // Rebuild the PC-only snapshot and keep the cursor in range.
+        pcCache = new java.util.ArrayList<>(box);
         if (pcIndex >= pcCache.size()) pcIndex = Math.max(0, pcCache.size() - 1);
     }
 
@@ -293,7 +281,8 @@ public class PokemonCenter {
     // ----- PC -----
 
     private void openPc() {
-        pcCache = gp.playerPokemon.allCaughtPokemon();
+        // PC only shows pokemon currently in storage — party members are managed via P.
+        pcCache = new java.util.ArrayList<>(gp.playerPokemon.pokemonInPC);
         pcIndex = 0;
         currentMessage = "";
         phase = Phase.PC_VIEW;
@@ -339,7 +328,7 @@ public class PokemonCenter {
         if (!autoAdvance && messageFrame > 15 && smallFont != null) {
             g2.setFont(smallFont);
             g2.setColor(new Color(220, 220, 220));
-            g2.drawString("Press Z", gp.screenWidth - 130, boxY + boxH - 22);
+            g2.drawString("Press Enter", gp.screenWidth - 160, boxY + boxH - 22);
         }
     }
 
@@ -412,7 +401,7 @@ public class PokemonCenter {
             g2.drawString("Your PC is empty.", gp.screenWidth / 2 - 120, gp.screenHeight / 2);
             if (smallFont != null) g2.setFont(smallFont);
             g2.setColor(new Color(160, 160, 160));
-            g2.drawString("Z or Esc to return", gp.screenWidth / 2 - 100, gp.screenHeight / 2 + 40);
+            g2.drawString("ESC to return", gp.screenWidth / 2 - 80, gp.screenHeight / 2 + 40);
             return;
         }
 
@@ -440,7 +429,7 @@ public class PokemonCenter {
         if (smallFont != null) g2.setFont(smallFont);
         g2.setColor(new Color(160, 160, 160));
         g2.drawString((pcIndex + 1) + " / " + n, 48, gp.screenHeight - 32);
-        g2.drawString("X to exit  -  Z to swap", 48, gp.screenHeight - 60);
+        g2.drawString("ESC to exit  -  Enter to swap", 48, gp.screenHeight - 60);
 
         // Right: large sprite of selected pokemon, centered in the right panel.
         Pokemon sel = pcCache.get(pcIndex);

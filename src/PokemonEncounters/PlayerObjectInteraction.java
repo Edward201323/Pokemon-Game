@@ -21,6 +21,8 @@ public class PlayerObjectInteraction {
             touchPokeball(i);
         } else if ("BushRoute1".equals(objectName)) {
             touchBushRoute1(0.015);
+        } else if ("Boss".equals(objectName)) {
+            touchBoss((object.OBJ_Boss) gp.obj.get(i));
         }
     }
 
@@ -28,14 +30,22 @@ public class PlayerObjectInteraction {
         gp.obj.set(i, null);
     }
 
-    // 1% of all wild encounters roll into the legendary/mythical pool; the other 99% draw
+    // Trainer boss encounter. Plays the boss music + hands off to BossIntro for the
+    // overworld dialog ("I am you..."). When the dialog drains, BossIntro builds the
+    // fresh roster and transitions into the actual encounter.
+    private void touchBoss(object.OBJ_Boss boss) {
+        gp.stopMusicResumeLater();
+        gp.playMusic(27); // 27_BossBattle2.wav
+        gp.bossIntro.open(boss);
+    }
+
+    // 2% of all wild encounters roll into the legendary/mythical pool; the other 98% draw
     // from the normal pool. The split is overall, not per-pool, so adding more legendaries
     // doesn't change the total legendary encounter rate.
-    private static final double LEGENDARY_ENCOUNTER_RATE = 0.01;
+    private static final double LEGENDARY_ENCOUNTER_RATE = 0.02;
 
     private void touchBushRoute1(double encounterRate) {
         if (RNG.nextDouble() > encounterRate) return;
-        changeMusic();
         gp.gameState = gp.pokemonTransition;
         // Use the strongest party member's level so back-bench pokemon don't drag the
         // encounter difficulty down (and so leveling up your reserve actually matters).
@@ -48,17 +58,26 @@ public class PlayerObjectInteraction {
             int legendaryLevel = Math.min(100, partyMax + 10 + RNG.nextInt(11));
             gp.wildPokemon = getWildPokemon.findRandomLegendaryPokemon(legendaryLevel);
         } else {
-            // Normals scale to the party's best: -10..+5, clamped to [5, 100].
-            int low  = Math.max(5,   partyMax - 10);
-            int high = Math.min(100, partyMax + 5);
+            // Normal wild pokemon scale to the party's best: -10..+5, but both ends are
+            // clamped to [5, 80]. The hard ceiling of 80 keeps grindable wilds below the
+            // player's end-game tier — without clamping `low` too, a Lv-100 party would
+            // push the floor to 90 and the safeguard would yank the ceiling back to 90.
+            int low  = Math.min(80, Math.max(5, partyMax - 10));
+            int high = Math.min(80, partyMax + 5);
             if (high < low) high = low;
             int level = low + RNG.nextInt(high - low + 1);
             gp.wildPokemon = getWildPokemon.findRandomNormalPokemon(level);
         }
+        // Music has to be picked AFTER the spawn so we can branch on isLegendary.
+        changeMusic();
     }
 
     private void changeMusic() {
         gp.stopMusicResumeLater();
-        gp.playMusic(RNG.nextDouble() < 0.5 ? 5 : 6);
+        if (gp.wildPokemon != null && gp.wildPokemon.isLegendary) {
+            gp.playMusic(20); // 20_Legendary Battle.wav
+        } else {
+            gp.playMusic(RNG.nextDouble() < 0.5 ? 5 : 6); // WildBattle1 / WildBattle2
+        }
     }
 }

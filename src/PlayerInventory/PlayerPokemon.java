@@ -19,12 +19,12 @@ public class PlayerPokemon {
         // viewer all have data to drive without grinding encounters first.
         // Charmander at Lv 15 is one level away from evolving (Lv 16 → Charmeleon), so
         // one battle's worth of XP triggers the evolution flow for testing.
-        addPokemon("Mewtwo", 100);
-        addPokemon("Charmander", 15);
-        addPokemon("Blastoise", 90);
-        addPokemon("Gengar", 85);
-        addPokemon("Snorlax", 80);
-        addPokemon("Pikachu", 70);
+        addPokemon("Kyurem",     100); // 4x on Rayquaza, 2x on Groudon
+        addPokemon("Magnezone",  100); // 4x on Kyogre, resists Xerneas
+        addPokemon("Ferrothorn", 100); // 4x on Kyogre+Groudon, resists Xerneas
+        addPokemon("Bisharp",    100); // 2x on Mewtwo, resists Xerneas
+        addPokemon("Lucario",    100); // 2x on Arceus, 2x on Xerneas
+        addPokemon("Hydreigon",  100); // immune to Mewtwo's Psychic
     }
 
     public void addPokemon(String pokemonName, int level) {

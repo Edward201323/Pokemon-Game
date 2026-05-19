@@ -50,8 +50,19 @@ public class GamePanel extends JPanel implements Runnable{
 
     public PokemonCenter.PokemonCenter pokemonCenter = new PokemonCenter.PokemonCenter(this, keyH);
     public PokemonCenter.Blackout blackout = new PokemonCenter.Blackout(this);
+    public MoveTutor.MoveTutor moveTutor = new MoveTutor.MoveTutor(this, keyH);
+    public BossIntro.BossIntro bossIntro = new BossIntro.BossIntro(this, keyH);
 
     public Pokemon wildPokemon;
+    // True iff the current encounter is the trainer boss (sets dialog tone, music, and
+    // disables CATCH). Reset by PokemonEncounter.endEncounter().
+    public boolean isBossBattle;
+    // Boss roster for the current battle (size 6 normally). bossIndex points to the
+    // pokemon currently on the field. currentBoss is the map tile so we can remove it
+    // from gp.obj once the team is fully defeated.
+    public java.util.List<Pokemon> bossQueue;
+    public int bossIndex;
+    public object.OBJ_Boss currentBoss;
 
     public PlayerInventory playerInventory = new PlayerInventory();
 
@@ -73,6 +84,8 @@ public class GamePanel extends JPanel implements Runnable{
     public final int pokemonCenterState = 7; // intro dialog, menu, heal animation, outro
     public final int pcViewState = 8;        // PC pokemon viewer (sub-state of the center)
     public final int blackoutState = 9;      // wipe-out fade-out + dialog + teleport + fade-in
+    public final int moveTutorState = 10;    // Move Tutor at tile 153
+    public final int bossIntroState = 11;    // Boss pre-fight dialog (overworld cutscene)
 
     public GamePanel(){
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
@@ -135,6 +148,10 @@ public class GamePanel extends JPanel implements Runnable{
             pokemonCenter.update();
         } else if (gameState == blackoutState) {
             blackout.update();
+        } else if (gameState == moveTutorState) {
+            moveTutor.update();
+        } else if (gameState == bossIntroState) {
+            bossIntro.update();
         }
         // Other states (encounter/transition/inventory) currently have no per-frame logic;
         // their visuals are driven by counters inside their draw() methods.
@@ -162,8 +179,10 @@ public class GamePanel extends JPanel implements Runnable{
 
         encounter.draw(g2);
 
-        // Center + blackout draw last so their overlays sit above the world / encounter.
+        // Center + tutor + blackout draw last so their overlays sit above the world / encounter.
         pokemonCenter.draw(g2);
+        moveTutor.draw(g2);
+        bossIntro.draw(g2);
         blackout.draw(g2);
 
         g2.dispose();

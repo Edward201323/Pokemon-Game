@@ -152,7 +152,7 @@ public class GetPokemon {
         pokemon.currentType1 = pokemon.type1;
         pokemon.currentType2 = pokemon.type2;
 
-        pokemon.moves = Moves.getMoves(pokemon.type1, pokemon.type2);
+        pokemon.moves = Moves.getMoves(pokemon.type1, pokemon.type2, level);
 
         pokemon.captureRate = Integer.parseInt(row[9]);
         pokemon.experienceGrowth = Integer.parseInt(row[10]);

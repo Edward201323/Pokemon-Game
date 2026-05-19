@@ -40,7 +40,7 @@ public class OpenPlayerInventory {
 
     // Edge detection.
     private boolean prevP, prevI;
-    private boolean prevZ, prevX, prevUp, prevDown, prevLeft, prevRight, prevEnter;
+    private boolean prevZ, prevUp, prevDown, prevLeft, prevRight, prevEnter, prevEsc;
 
     // Selection mode (shared by battle switching and PC swap).
     private boolean selectionMode;
@@ -101,8 +101,8 @@ public class OpenPlayerInventory {
         // Seed every edge-tracked key so the same press that opened the selector doesn't
         // immediately confirm/cancel on the next frame.
         prevP = keyH.pPressed; prevI = keyH.iPressed;
-        prevZ = keyH.zPressed; prevX = keyH.xPressed;
-        prevEnter = keyH.enterPressed;
+        prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed; prevEsc = keyH.escPressed;
         prevUp = keyH.upPressed; prevDown = keyH.downPressed;
         prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
 
@@ -149,14 +149,14 @@ public class OpenPlayerInventory {
         boolean justP = keyH.pPressed && !prevP;
         boolean justI = keyH.iPressed && !prevI;
         boolean justConfirm = (keyH.enterPressed && !prevEnter) || (keyH.zPressed && !prevZ);
-        boolean justX = keyH.xPressed && !prevX;
+        boolean justEsc = keyH.escPressed && !prevEsc;
         boolean justUp = keyH.upPressed && !prevUp;
         boolean justDown = keyH.downPressed && !prevDown;
         boolean justLeft = keyH.leftPressed && !prevLeft;
         boolean justRight = keyH.rightPressed && !prevRight;
         prevP = keyH.pPressed; prevI = keyH.iPressed;
-        prevZ = keyH.zPressed; prevX = keyH.xPressed;
-        prevEnter = keyH.enterPressed;
+        prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed; prevEsc = keyH.escPressed;
         prevUp = keyH.upPressed; prevDown = keyH.downPressed;
         prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
 
@@ -201,7 +201,7 @@ public class OpenPlayerInventory {
             }
             return;
         }
-        if (justX) {
+        if (justEsc) {
             if (swapSource >= 0) { swapSource = -1; return; }
             gp.gameState = gp.playState;
             return;
@@ -214,14 +214,17 @@ public class OpenPlayerInventory {
 
     private void handleSelectionInput() {
         // Enter is the primary confirm; Z still works as an alternative.
+        // Cancel is ESC only — not X — so a held X in battle (CATCH) can't double-fire
+        // as both "cancel selector" and then "throw poke ball" when the selector hands
+        // control back to BattleSystem.
         boolean justConfirm = (keyH.enterPressed && !prevEnter) || (keyH.zPressed && !prevZ);
-        boolean justX = keyH.xPressed && !prevX;
+        boolean justEsc = keyH.escPressed && !prevEsc;
         boolean justUp = keyH.upPressed && !prevUp;
         boolean justDown = keyH.downPressed && !prevDown;
         boolean justLeft = keyH.leftPressed && !prevLeft;
         boolean justRight = keyH.rightPressed && !prevRight;
-        prevZ = keyH.zPressed; prevX = keyH.xPressed;
-        prevEnter = keyH.enterPressed;
+        prevZ = keyH.zPressed;
+        prevEnter = keyH.enterPressed; prevEsc = keyH.escPressed;
         prevUp = keyH.upPressed; prevDown = keyH.downPressed;
         prevLeft = keyH.leftPressed; prevRight = keyH.rightPressed;
         prevP = keyH.pPressed; prevI = keyH.iPressed;
@@ -234,7 +237,7 @@ public class OpenPlayerInventory {
 
         if (justConfirm && isSlotSelectable(cursor)) {
             closeSelector(true);
-        } else if (justX && cancellable) {
+        } else if (justEsc && cancellable) {
             closeSelector(false);
         }
     }
@@ -257,13 +260,13 @@ public class OpenPlayerInventory {
         String hint;
         Color hintColor;
         if (selectionMode && prompt != null) {
-            hint = prompt + (cancellable ? "   (X to cancel)" : "");
+            hint = prompt + (cancellable ? "   (ESC to cancel)" : "");
             hintColor = new Color(255, 220, 60);
         } else if (swapSource >= 0) {
-            hint = "Pick a slot to swap with   (X cancel)";
+            hint = "Pick a slot to swap with   (ESC cancel)";
             hintColor = new Color(120, 200, 255);
         } else {
-            hint = "Enter swap   X close";
+            hint = "Enter swap   ESC close";
             hintColor = new Color(160, 175, 190);
         }
         g2.setColor(hintColor);
@@ -335,6 +338,8 @@ public class OpenPlayerInventory {
         if (nameFont != null) g2.setFont(nameFont);
         g2.setColor(fainted ? new Color(220, 130, 130) : Color.white);
         g2.drawString(p.name, textX, y + 38);
+        int nameW = g2.getFontMetrics().stringWidth(p.name);
+        PokemonEncounters.BattleSystem.drawGender(g2, p.gender, textX + nameW + 10, y + 38);
 
         if (metaFont != null) g2.setFont(metaFont);
         g2.setColor(new Color(190, 200, 210));
