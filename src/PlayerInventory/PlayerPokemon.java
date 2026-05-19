@@ -17,8 +17,10 @@ public class PlayerPokemon {
         this.gp = gp;
         // Testing seed: a full party so the center heal animation, blackout flow, and PC
         // viewer all have data to drive without grinding encounters first.
+        // Charmander at Lv 15 is one level away from evolving (Lv 16 → Charmeleon), so
+        // one battle's worth of XP triggers the evolution flow for testing.
         addPokemon("Mewtwo", 100);
-        addPokemon("Charizard", 90);
+        addPokemon("Charmander", 15);
         addPokemon("Blastoise", 90);
         addPokemon("Gengar", 85);
         addPokemon("Snorlax", 80);

@@ -17,7 +17,17 @@ public final class ExpCurves {
 
     // Gen-2-style EXP yield: (base_yield * defeated_level) / 7, with a floor of 1.
     public static int expGained(int baseYield, int defeatedLevel) {
-        return Math.max(1, (baseYield * defeatedLevel) / 7);
+        return expGained(baseYield, defeatedLevel, 50);
+    }
+
+    // Same formula, but boosted by a per-receiver multiplier that ramps from 2x at low
+    // levels to 5x at level 100. Because this is a wild-encounter-only game (no trainers
+    // = no big EXP fights), the boost keeps higher levels from feeling like a slog.
+    public static int expGained(int baseYield, int defeatedLevel, int gainerLevel) {
+        int clamped = Math.max(1, Math.min(100, gainerLevel));
+        double multiplier = 2.0 + (clamped / 100.0) * 3.0; // 2.03 .. 5.00
+        int base = Math.max(1, (baseYield * defeatedLevel) / 7);
+        return Math.max(1, (int) Math.round(base * multiplier));
     }
 
     // 0..1 fraction of the way from the current level threshold to the next. Returns 1.0

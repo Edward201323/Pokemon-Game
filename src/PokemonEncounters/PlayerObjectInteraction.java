@@ -37,15 +37,20 @@ public class PlayerObjectInteraction {
         if (RNG.nextDouble() > encounterRate) return;
         changeMusic();
         gp.gameState = gp.pokemonTransition;
-        int leadLevel = gp.playerPokemon.pokemonEquipped.get(0).level;
+        // Use the strongest party member's level so back-bench pokemon don't drag the
+        // encounter difficulty down (and so leveling up your reserve actually matters).
+        int partyMax = 1;
+        for (Pokemon.Pokemon p : gp.playerPokemon.pokemonEquipped) {
+            if (p != null && p.level > partyMax) partyMax = p.level;
+        }
         if (RNG.nextDouble() < LEGENDARY_ENCOUNTER_RATE) {
-            // Legendaries scale to the lead pokemon: +10..+20, capped at 100.
-            int legendaryLevel = Math.min(100, leadLevel + 10 + RNG.nextInt(11));
+            // Legendaries scale to the party's best: +10..+20, capped at 100.
+            int legendaryLevel = Math.min(100, partyMax + 10 + RNG.nextInt(11));
             gp.wildPokemon = getWildPokemon.findRandomLegendaryPokemon(legendaryLevel);
         } else {
-            // Normals scale to the lead: -10..+5, clamped to [5, 100].
-            int low  = Math.max(5,   leadLevel - 10);
-            int high = Math.min(100, leadLevel + 5);
+            // Normals scale to the party's best: -10..+5, clamped to [5, 100].
+            int low  = Math.max(5,   partyMax - 10);
+            int high = Math.min(100, partyMax + 5);
             if (high < low) high = low;
             int level = low + RNG.nextInt(high - low + 1);
             gp.wildPokemon = getWildPokemon.findRandomNormalPokemon(level);

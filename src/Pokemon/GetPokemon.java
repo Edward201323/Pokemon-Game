@@ -182,6 +182,14 @@ public class GetPokemon {
 
         pokemon.isLegendary = "YES".equalsIgnoreCase(row[21]);
 
+        // Evolution target (level-up only). Blank/0 means it doesn't evolve.
+        pokemon.evolvesInto = row.length > 22 ? row[22].trim() : "";
+        try {
+            pokemon.evolveLevel = row.length > 23 ? Integer.parseInt(row[23].trim()) : 0;
+        } catch (NumberFormatException e) {
+            pokemon.evolveLevel = 0;
+        }
+
         assignAbility(pokemon, row);
 
         pokemon.shiny = RNG.nextDouble() <= 0.0005;
@@ -197,23 +205,23 @@ public class GetPokemon {
     }
 
     private void assignAbility(Pokemon pokemon, String[] row) {
-        int abilityCount = row.length - 22;
+        int abilityCount = row.length - 24;
         if (abilityCount <= 1) {
-            pokemon.ability1 = abilityCount == 1 ? row[22] : null;
+            pokemon.ability1 = abilityCount == 1 ? row[24] : null;
             pokemon.ability = pokemon.ability1;
             return;
         }
         if (abilityCount == 2) {
             // Two listed: first is normal, second is hidden (10% chance)
-            pokemon.ability1 = row[22];
-            pokemon.hiddenAbility = row[23];
+            pokemon.ability1 = row[24];
+            pokemon.hiddenAbility = row[25];
             pokemon.ability = RNG.nextDouble() < 0.1 ? pokemon.hiddenAbility : pokemon.ability1;
             return;
         }
         // Three or more: two normals (45% each) + hidden (10%)
-        pokemon.ability1 = row[22];
-        pokemon.ability2 = row[23];
-        pokemon.hiddenAbility = row[24];
+        pokemon.ability1 = row[24];
+        pokemon.ability2 = row[25];
+        pokemon.hiddenAbility = row[26];
         double r = RNG.nextDouble();
         if (r < 0.1) {
             pokemon.ability = pokemon.hiddenAbility;

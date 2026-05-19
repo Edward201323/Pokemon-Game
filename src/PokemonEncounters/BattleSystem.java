@@ -18,6 +18,7 @@ import javax.imageio.ImageIO;
 import Main.GamePanel;
 import Main.KeyHandler;
 import Pokemon.ExpCurves;
+import Pokemon.GetPokemon;
 import Pokemon.Move;
 import Pokemon.Pokemon;
 import Pokemon.TypeChart;
@@ -39,10 +40,11 @@ public class BattleSystem {
     private static final int WOBBLE_FRAMES = 38;
     private static final int POST_WOBBLE_HOLD = 18;
     // Where the ball ends up on the enemy and where it starts (lower-left, off-trainer).
-    // Targets the enemy sprite's *foot* region (lower portion of ENEMY_*) so the ball
-    // visually sits at the pokemon's feet rather than its head/center.
+    // Targets the enemy sprite's *feet* — most front sprites have transparent padding at
+    // the bottom of their bounding box, so the visual feet sit ~80% down the box rather
+    // than at the literal bottom edge.
     private static final int BALL_START_X = 140, BALL_START_Y = 600;
-    private static final int BALL_LAND_X  = 665, BALL_LAND_Y  = 370;
+    private static final int BALL_LAND_X  = 665, BALL_LAND_Y  = 340;
     private static final int BALL_DRAW_SIZE = 56;
     private static final double THROW_ARC_HEIGHT = 240.0;
     private static final double WOBBLE_MAX_TILT = 0.40; // radians (~23 degrees)
@@ -424,20 +426,22 @@ public class BattleSystem {
     }
 
     // After the enemy's faint animation, award EXP to every non-fainted party member
-    // (Gen 6+ Exp Share — everyone gets the full amount). Hard-caps the level at 100
-    // (totalExp clamped to the curve max). Dialog is a single summary line plus a
-    // per-pokemon level-up line for anyone who advanced.
+    // (Gen 6+ Exp Share — everyone gets a per-receiver scaled amount, 2x..5x of base).
+    // Hard-caps the level at 100. Each level-up that crosses an evolution threshold
+    // chains an evolution and queues a "X evolved into Y!" line in the dialog.
     private void giveExpAndFinish() {
-        int gain = ExpCurves.expGained(enemy().expGiven, enemy().level);
+        Pokemon active = player();
         java.util.List<Pokemon> party = gp.playerPokemon.pokemonEquipped;
-        java.util.List<Pokemon> leveledUp = new java.util.ArrayList<>();
+        java.util.List<String> followLines = new java.util.ArrayList<>();
         int sharedCount = 0;
+        int activeGain = 0;
         for (Pokemon p : party) {
             if (p == null || p.currentHP <= 0) continue;
-            if (p.level >= 100) continue; // already maxed, no XP to gain
+            if (p.level >= 100) continue;
+            int gain = ExpCurves.expGained(enemy().expGiven, enemy().level, p.level);
+            if (p == active) activeGain = gain;
             p.totalExp += gain;
             int curveMax = p.experienceGrowth;
-            // Clamp so totalExp can't grow past the curve max once at level 100.
             if (p.totalExp > curveMax) p.totalExp = curveMax;
             int origLevel = p.level;
             while (p.level < 100
@@ -446,13 +450,18 @@ public class BattleSystem {
             }
             if (p.level > origLevel) {
                 p.recalcStats();
-                leveledUp.add(p);
+                followLines.add(p.name + " grew to Lv. " + p.level + "!");
+                // Chain evolutions: if the new level crosses multiple evolution thresholds
+                // (rare, but possible with big XP jumps), evolve all the way through.
+                while (p.evolveLevel > 0 && p.level >= p.evolveLevel
+                        && p.evolvesInto != null && !p.evolvesInto.isEmpty()) {
+                    String oldName = p.name;
+                    if (!evolvePokemon(p)) break;
+                    followLines.add(oldName + " evolved into " + p.name + "!");
+                }
             }
             sharedCount++;
         }
-        // Re-seed the displayed HP so the bar reflects the active pokemon's new maxHP
-        // correctly while messages are on screen.
-        Pokemon active = player();
         if (active != null) displayedPlayerHP = active.currentHP;
 
         Runnable finish = () -> phase = Phase.FINISHED;
@@ -461,15 +470,46 @@ public class BattleSystem {
             return;
         }
         String activeName = (active != null) ? active.name : "Your Pokemon";
+        int displayGain = activeGain > 0 ? activeGain : ExpCurves.expGained(enemy().expGiven, enemy().level, 50);
         String summary = (sharedCount > 1)
-            ? activeName + " and your party gained " + gain + " EXP. Points!"
-            : activeName + " gained " + gain + " EXP. Points!";
-        queue(summary, leveledUp.isEmpty() ? finish : null);
-        for (int i = 0; i < leveledUp.size(); i++) {
-            Pokemon lp = leveledUp.get(i);
-            boolean last = (i == leveledUp.size() - 1);
-            queue(lp.name + " grew to Lv. " + lp.level + "!", last ? finish : null);
+            ? activeName + " and your party gained " + displayGain + " EXP. Points!"
+            : activeName + " gained " + displayGain + " EXP. Points!";
+        queue(summary, followLines.isEmpty() ? finish : null);
+        for (int i = 0; i < followLines.size(); i++) {
+            boolean last = (i == followLines.size() - 1);
+            queue(followLines.get(i), last ? finish : null);
         }
+    }
+
+    // In-place evolve: replace `p`'s species data with the evolved form (looked up by
+    // name via GetPokemon) and recompute stats. Keeps currentHP, totalExp, level, and
+    // IVs; only the species-derived fields change (base stats, types, moves, sprite key,
+    // capture rate, XP yield, next evolution).
+    private boolean evolvePokemon(Pokemon p) {
+        Pokemon evolved = new GetPokemon().findPokemon(p.evolvesInto, p.level);
+        if (evolved == null) return false;
+        p.name = evolved.name;
+        p.NameInFile = evolved.NameInFile;
+        p.NameInFileGif = evolved.NameInFileGif;
+        p.pokedexNumber = evolved.pokedexNumber;
+        p.type1 = evolved.type1;
+        p.type2 = evolved.type2;
+        p.currentType1 = evolved.type1;
+        p.currentType2 = evolved.type2;
+        p.baseHP        = evolved.baseHP;
+        p.baseAttack    = evolved.baseAttack;
+        p.baseDefense   = evolved.baseDefense;
+        p.baseSpAttack  = evolved.baseSpAttack;
+        p.baseSpDef     = evolved.baseSpDef;
+        p.baseSpeed     = evolved.baseSpeed;
+        p.captureRate   = evolved.captureRate;
+        p.experienceGrowth = evolved.experienceGrowth;
+        p.expGiven      = evolved.expGiven;
+        p.evolvesInto   = evolved.evolvesInto;
+        p.evolveLevel   = evolved.evolveLevel;
+        p.moves         = evolved.moves;
+        p.recalcStats();
+        return true;
     }
 
     private void handleMoveInput() {

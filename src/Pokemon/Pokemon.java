@@ -44,6 +44,10 @@ public class Pokemon {
     // experience curve to decide when to level up.
     public int totalExp;
 
+    // Level-up evolution target. Empty/null + evolveLevel=0 = doesn't evolve.
+    public String evolvesInto;
+    public int evolveLevel;
+
     // Base stats from the CSV (cols 1-6). Kept around so we can re-derive scaled stats
     // (hp/attack/etc.) on level-up via recalcStats().
     public int baseHP, baseAttack, baseDefense, baseSpAttack, baseSpDef, baseSpeed;
