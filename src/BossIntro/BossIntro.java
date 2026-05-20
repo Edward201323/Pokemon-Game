@@ -12,6 +12,8 @@ import java.util.List;
 import Main.GamePanel;
 import Main.KeyHandler;
 import Pokemon.GetPokemon;
+import Pokemon.Move;
+import Pokemon.Moves;
 import Pokemon.Pokemon;
 import PokemonEncounters.BattleSystem;
 import object.OBJ_Boss;
@@ -129,7 +131,19 @@ public class BossIntro {
         List<Pokemon> roster = new ArrayList<>(boss.team.size());
         for (OBJ_Boss.Member m : boss.team) {
             Pokemon p = getPokemon.findPokemon(m.name, m.level);
-            if (p != null) roster.add(p);
+            if (p == null) continue;
+            // Honor an explicit moveset from the roster spec. Names are looked up in the
+            // global move pool; unknown names are silently skipped. Slots beyond the
+            // override length stay empty (matches the user's "-empty-" intent).
+            if (m.moves != null) {
+                java.util.List<Move> custom = new java.util.ArrayList<>();
+                for (String mv : m.moves) {
+                    Move resolved = Moves.findByName(mv);
+                    if (resolved != null) custom.add(resolved);
+                }
+                p.moves = custom;
+            }
+            roster.add(p);
         }
         if (roster.isEmpty()) { gp.gameState = gp.playState; return; }
         gp.bossQueue = roster;

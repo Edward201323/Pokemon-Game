@@ -736,6 +736,11 @@ public class BattleSystem {
         doAttack(enemy(), player(), move, "Wild " + enemy().name);
     }
 
+    // Critical hits: Gen 6+ rate (1/24) and damage multiplier (1.5x). Damaging moves
+    // only — status/0-power moves never crit.
+    private static final int CRIT_ROLL_MAX = 24;
+    private static final double CRIT_MULTIPLIER = 1.5;
+
     private void doAttack(Pokemon attacker, Pokemon defender, Move move, String attackerLabel) {
         queue(attackerLabel + " used " + move.name + "!", null);
         if (!rollHit(move)) {
@@ -747,10 +752,14 @@ public class BattleSystem {
             queue("It doesn't affect " + defender.name + "...", null);
             return;
         }
+        boolean crit = move.basePower > 0 && RNG.nextInt(CRIT_ROLL_MAX) == 0;
         // Hold the damage until DAMAGE_DELAY_FRAMES into the "used Y!" message so the
         // bar drain feels reactive to the move name instead of simultaneous.
         pendingDamageTarget = defender;
-        pendingDamage = computeDamage(attacker, defender, move, eff);
+        pendingDamage = computeDamage(attacker, defender, move, eff, crit);
+        if (crit) {
+            queue("A critical hit!", null);
+        }
         if (eff >= 2.0) {
             queue("It's super effective!", null);
         } else if (eff < 1.0) {
@@ -762,7 +771,8 @@ public class BattleSystem {
         return move.accuracy < 0 || RNG.nextInt(100) < move.accuracy;
     }
 
-    private int computeDamage(Pokemon attacker, Pokemon defender, Move move, double effectiveness) {
+    private int computeDamage(Pokemon attacker, Pokemon defender, Move move,
+                              double effectiveness, boolean crit) {
         int atk = move.physical ? attacker.currentAttack : attacker.currentSpAttack;
         int def = move.physical ? defender.currentDefense : defender.currentSpDef;
         if (def <= 0) def = 1;
@@ -771,6 +781,7 @@ public class BattleSystem {
             base *= 1.5; // STAB
         }
         base *= effectiveness;
+        if (crit) base *= CRIT_MULTIPLIER;
         base *= 0.85 + RNG.nextDouble() * 0.15;
         return Math.max(1, (int) base);
     }

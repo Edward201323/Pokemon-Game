@@ -20,13 +20,25 @@ public class AssetSetter {
         gp.obj.get(gp.obj.size()-1).worldX = 10 * gp.tileSize;
         gp.obj.get(gp.obj.size()-1).worldY = 10 * gp.tileSize;
 
-        // Trainer boss "????" in the top-right walkable strip. End-game roster: six
-        // legendaries at level 100. Optimal movesets fall out of the type-based picker
-        // automatically (top-half tier bias at Lv 100 selects only end-game moves).
-        // NOTE: every species name here must exist in PokemonStats.csv or it'll be
-        // silently skipped during the roster build.
-        gp.obj.add(OBJ_Boss.withTeam(100,
-            "Xerneas", "Groudon", "Kyogre", "Rayquaza", "Mewtwo", "Arceus"));
+        // Trainer boss "????" in the top-right walkable strip. End-game roster: seven
+        // legendaries at level 100 with hand-picked movesets. Reshiram uses its
+        // auto-generated picker (signatures + type moves) since no override was specified.
+        // Movesets shorter than 4 leave the remaining slots empty.
+        java.util.List<OBJ_Boss.Member> bossTeam = new java.util.ArrayList<>();
+        bossTeam.add(new OBJ_Boss.Member("Reshiram", 100));
+        bossTeam.add(new OBJ_Boss.Member("Darkrai", 100,
+            new String[] { "Dark Pulse", "Shadow Ball", "Ice Beam", "Thunderbolt" }));
+        bossTeam.add(new OBJ_Boss.Member("Groudon", 100,
+            new String[] { "Precipice Blades", "Fire Punch", "Solar Beam" }));
+        bossTeam.add(new OBJ_Boss.Member("Kyogre", 100,
+            new String[] { "Origin Pulse", "Thunderbolt", "Ice Beam" }));
+        bossTeam.add(new OBJ_Boss.Member("Rayquaza", 100,
+            new String[] { "Dragon Ascent", "Outrage", "Earthquake" }));
+        bossTeam.add(new OBJ_Boss.Member("Mewtwo", 100,
+            new String[] { "Psystrike", "Shadow Ball", "Fire Blast", "Ice Beam" }));
+        bossTeam.add(new OBJ_Boss.Member("Arceus", 100,
+            new String[] { "Judgment", "Draco Meteor", "Close Combat", "Flamethrower" }));
+        gp.obj.add(new OBJ_Boss(bossTeam));
         gp.obj.get(gp.obj.size()-1).worldX = 38 * gp.tileSize;
         gp.obj.get(gp.obj.size()-1).worldY = 11 * gp.tileSize;
 

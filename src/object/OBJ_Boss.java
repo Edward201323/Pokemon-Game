@@ -22,7 +22,13 @@ public class OBJ_Boss extends SuperObject {
     public static class Member {
         public final String name;
         public final int level;
-        public Member(String name, int level) { this.name = name; this.level = level; }
+        // Optional explicit moveset (move names from moves.csv). Null = let the picker
+        // auto-generate. If shorter than 4, the remaining move slots stay empty.
+        public final String[] moves;
+        public Member(String name, int level) { this(name, level, null); }
+        public Member(String name, int level, String[] moves) {
+            this.name = name; this.level = level; this.moves = moves;
+        }
     }
 
     public final List<Member> team;

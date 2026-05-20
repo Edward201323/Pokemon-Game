@@ -122,27 +122,22 @@ public class Moves {
                 if (m != null && m.minLevel <= level) result.add(m);
             }
         }
-        // Slot 0: strongest Normal (except Hyper Beam) the species can learn. When the
-        // species has a learnset, respect it strictly — if no Normal move is in the
-        // learnset, slot 0 stays empty (the user explicitly stripped Normal moves from
-        // non-Normal species). Only species without any learnset entry get the universal
-        // fallback so they still receive a Normal coverage move.
-        Move normal;
+        // Fill the rest from the species' learnset, biased toward higher-power moves
+        // for "somewhat optimal" wild loadouts — but not strictly the strongest, so two
+        // wild Snorlaxes don't always have identical movesets. Species without a learnset
+        // fall back to the type-based picker.
         if (learnset != null) {
-            normal = strongestNormalExceptHyperBeam(level, learnset);
+            pickFromLearnset(result, learnset, level, 4);
         } else {
-            normal = strongestNormalExceptHyperBeam(level, null);
-        }
-        if (normal != null) result.add(normal);
-
-        boolean dualType = type2 != null
-                && !type2.equalsIgnoreCase("none")
-                && !type2.equalsIgnoreCase(type1);
-        if (dualType) {
-            pickFromType(result, type1, level, 2, learnset);
-            pickFromType(result, type2, level, 1, learnset);
-        } else {
-            pickFromType(result, type1, level, 3, learnset);
+            boolean dualType = type2 != null
+                    && !type2.equalsIgnoreCase("none")
+                    && !type2.equalsIgnoreCase(type1);
+            if (dualType) {
+                pickFromType(result, type1, level, 2, null);
+                pickFromType(result, type2, level, 2, null);
+            } else {
+                pickFromType(result, type1, level, 4, null);
+            }
         }
         // Safety net: an underleveled spawn of a species whose entire learnset is
         // above its current level (e.g., a Lv-5 Klink whose earliest legal move is
@@ -172,26 +167,6 @@ public class Moves {
         return new ArrayList<>(capped);
     }
 
-    // Highest-power Normal move the pokemon qualifies for, excluding Hyper Beam. Ties
-    // broken by minLevel (newer move wins). If `learnset` is non-null, restricts to
-    // moves the species actually learns. Returns null if no Normal move qualifies.
-    private static Move strongestNormalExceptHyperBeam(int level, java.util.Set<String> learnset) {
-        List<Move> pool = BY_TYPE.get("normal");
-        if (pool == null) return null;
-        Move best = null;
-        for (Move m : pool) {
-            if (m.name.equalsIgnoreCase(HYPER_BEAM)) continue;
-            if (m.minLevel > level) continue;
-            if (learnset != null && !learnset.contains(m.name)) continue;
-            if (best == null
-                    || m.basePower > best.basePower
-                    || (m.basePower == best.basePower && m.minLevel > best.minLevel)) {
-                best = m;
-            }
-        }
-        return best;
-    }
-
     // Pick `count` moves from one type, split between physical and special (phys takes
     // the extra slot on odd counts). Each half is independently filtered by level then
     // biased toward the highest-tier moves the pokemon qualifies for. If `learnset` is
@@ -219,15 +194,54 @@ public class Moves {
         pickWithTierBias(out, spec, level, specCount);
     }
 
-    // Filter `pool` to moves that qualify at `level`. If too few qualify, slots stay
-    // empty — low-level pokemon (e.g., a Lv-5 starter) shouldn't be handed a Lv-85
-    // move just to fill space. Among qualifying moves, take the top half by minLevel
-    // (the "tier bias" — favors newer moves for high-level pokemon) and randomly sample
-    // `count` from that subset.
+    // Pick `count` moves from the species' entire learnset (any type), level-filtered
+    // with the same scaled tolerance as the type picker. Biased toward higher-power
+    // moves via top-half-by-power, then randomised within that half so the same species
+    // shows variety across encounters. Skips moves already in `out` (e.g., signatures).
+    private static void pickFromLearnset(List<Move> out, java.util.Set<String> learnset,
+                                          int level, int count) {
+        if (learnset == null || count <= 0) return;
+        int tolerance = Math.max(0, level - 15);
+        int effectiveLevel = level + tolerance;
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        for (Move m : out) existing.add(m.name);
+        List<Move> qualified = new ArrayList<>();
+        for (String name : learnset) {
+            if (existing.contains(name)) continue;
+            Move m = findByName(name);
+            if (m == null) continue;
+            if (m.minLevel > effectiveLevel) continue;
+            qualified.add(m);
+        }
+        if (qualified.isEmpty()) return;
+        // Sort by basePower descending so the strongest moves bubble to the top half.
+        qualified.sort((a, b) -> b.basePower - a.basePower);
+        int needed = Math.max(0, count - out.size());
+        int topHalfSize = Math.max(needed, (qualified.size() + 1) / 2);
+        List<Move> top = new ArrayList<>(qualified.subList(0, Math.min(qualified.size(), topHalfSize)));
+        Collections.shuffle(top, RNG);
+        for (int i = 0; i < needed && i < top.size(); i++) out.add(top.get(i));
+    }
+
+    // Filter `pool` to moves that qualify at `level` (with a level-scaled tolerance so
+    // mid-tier wilds aren't stuck with a single Lv-1 move). Low-level pokemon get no
+    // tolerance — a Lv-5 starter still ends up with only its true-Lv-1 moves. As level
+    // climbs the tolerance opens up so e.g. a Lv-30 Snorlax can roll Body Slam (Lv 45)
+    // instead of being limited to Tackle. Among qualifying moves, take the top half by
+    // minLevel and randomly sample `count`.
     private static void pickWithTierBias(List<Move> out, List<Move> pool, int level, int count) {
         if (pool.isEmpty() || count <= 0) return;
+        int tolerance = Math.max(0, level - 15);
+        int effectiveLevel = level + tolerance;
         List<Move> qualified = new ArrayList<>();
-        for (Move m : pool) if (m.minLevel <= level) qualified.add(m);
+        for (Move m : pool) {
+            if (m.minLevel > effectiveLevel) continue;
+            // Strip signature moves from the unrestricted type-picker fallback —
+            // otherwise a learnset-less species (Beldum, Ditto) could roll Doom Desire
+            // or Mist Ball just because they're in the Steel/Psychic pools.
+            if (SIGNATURE_MOVES.contains(m.name)) continue;
+            qualified.add(m);
+        }
         if (qualified.isEmpty()) return;
         if (qualified.size() <= count) {
             out.addAll(qualified);
