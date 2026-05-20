@@ -568,11 +568,21 @@ public class BattleSystem {
             return;
         }
         String activeName = (active != null) ? active.name : "Your Pokemon";
-        int displayGain = activeGain > 0 ? activeGain : ExpCurves.expGained(enemy().expGiven, enemy().level, 50);
-        String summary = (sharedCount > 1)
-            ? activeName + " and your party gained " + displayGain + " EXP. Points!"
-            : activeName + " gained " + displayGain + " EXP. Points!";
-        queue(summary, followLines.isEmpty() ? finish : null);
+        // Only show the "gained EXP" headline when the active pokemon actually gained.
+        // A Lv-100 active receives no XP, so saying "Mewtwo gained X EXP" would be a lie.
+        // Reserve party members may still have gained via Exp Share — their level-ups
+        // still announce, but the headline is skipped.
+        boolean showHeadline = activeGain > 0;
+        if (showHeadline) {
+            String summary = (sharedCount > 1)
+                ? activeName + " and your party gained " + activeGain + " EXP. Points!"
+                : activeName + " gained " + activeGain + " EXP. Points!";
+            queue(summary, followLines.isEmpty() ? finish : null);
+        } else if (followLines.isEmpty()) {
+            // Active is maxed and nobody level-ed up — nothing to announce.
+            finish.run();
+            return;
+        }
         for (int i = 0; i < followLines.size(); i++) {
             boolean last = (i == followLines.size() - 1);
             queue(followLines.get(i), last ? finish : null);
