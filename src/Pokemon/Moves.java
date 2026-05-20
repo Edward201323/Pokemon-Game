@@ -122,6 +122,14 @@ public class Moves {
                 if (m != null && m.minLevel <= level) result.add(m);
             }
         }
+        // Guarantee at least one STAB move when the species learns one. Without this,
+        // a wild Manaphy could roll Giga Impact + Blizzard + Hyper Beam + Iron Tail and
+        // have zero Water moves — its actual identity disappears. Slotted before the
+        // main picker so it counts toward the 4-slot cap and isn't deduped away.
+        if (learnset != null) {
+            ensureStab(result, learnset, type1, type2, level);
+        }
+
         // Fill the rest from the species' learnset, biased toward higher-power moves
         // for "somewhat optimal" wild loadouts — but not strictly the strongest, so two
         // wild Snorlaxes don't always have identical movesets. Species without a learnset
@@ -192,6 +200,45 @@ public class Moves {
         for (Move m : filtered) (m.physical ? phys : spec).add(m);
         pickWithTierBias(out, phys, level, physCount);
         pickWithTierBias(out, spec, level, specCount);
+    }
+
+    // Ensure the result already contains at least one same-type-attack-bonus move. If
+    // not, scan the species' learnset for the strongest STAB move that qualifies at the
+    // current level (with the standard tolerance) and append it. Status / 0-power moves
+    // are eligible only as a last resort — we prefer damaging STAB. Does nothing when
+    // the species has no STAB move at this level (e.g., Magikarp before evolution).
+    private static void ensureStab(List<Move> result, java.util.Set<String> learnset,
+                                    String type1, String type2, int level) {
+        for (Move m : result) {
+            if (m == null) continue;
+            if (sameType(type1, m.type) || sameType(type2, m.type)) return; // already covered
+        }
+        int tolerance = Math.max(0, level - 15);
+        int effectiveLevel = level + tolerance;
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        for (Move m : result) existing.add(m.name);
+        Move bestDamaging = null;
+        Move bestAny = null;
+        for (String name : learnset) {
+            if (existing.contains(name)) continue;
+            Move m = findByName(name);
+            if (m == null) continue;
+            if (m.minLevel > effectiveLevel) continue;
+            if (!sameType(type1, m.type) && !sameType(type2, m.type)) continue;
+            if (bestAny == null || m.basePower > bestAny.basePower) bestAny = m;
+            if (m.basePower > 0 && (bestDamaging == null || m.basePower > bestDamaging.basePower)) {
+                bestDamaging = m;
+            }
+        }
+        Move pick = bestDamaging != null ? bestDamaging : bestAny;
+        if (pick != null) result.add(pick);
+    }
+
+    // Same-type check shared with BattleSystem's STAB logic. Treats "none" as no match.
+    private static boolean sameType(String pokemonType, String moveType) {
+        return pokemonType != null && moveType != null
+            && !pokemonType.equalsIgnoreCase("none")
+            && pokemonType.equalsIgnoreCase(moveType);
     }
 
     // Pick `count` moves from the species' entire learnset (any type), level-filtered

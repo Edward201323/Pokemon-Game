@@ -42,7 +42,8 @@ public class PlayerObjectInteraction {
     // 2% of all wild encounters roll into the legendary/mythical pool; the other 98% draw
     // from the normal pool. The split is overall, not per-pool, so adding more legendaries
     // doesn't change the total legendary encounter rate.
-    private static final double LEGENDARY_ENCOUNTER_RATE = 0.02;
+    // Public so tests/probes can read it without duplicating the constant.
+    public static final double LEGENDARY_ENCOUNTER_RATE = 0.02;
 
     private void touchBushRoute1(double encounterRate) {
         if (RNG.nextDouble() > encounterRate) return;
