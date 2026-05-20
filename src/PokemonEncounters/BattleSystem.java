@@ -657,13 +657,34 @@ public class BattleSystem {
 
     // ----- turn resolution -----
 
+    // Priority moves (mainline +1 quick-attack tier) from our 150-move catalog. A move on
+    // this list always goes before any non-priority move, regardless of speed. Same-priority
+    // pairs resolve by the existing speed tie-break.
+    private static final java.util.Set<String> PRIORITY_MOVES = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "Quick Attack", "Aqua Jet", "Bullet Punch", "Ice Shard",
+            "Vacuum Wave", "Shadow Sneak", "Mach Punch", "Sucker Punch"
+        )
+    );
+
+    private static int movePriority(Move m) {
+        return (m != null && PRIORITY_MOVES.contains(m.name)) ? 1 : 0;
+    }
+
     private void resolveTurn(Move playerMove) {
         Pokemon p = player();
         Pokemon e = enemy();
         Move enemyMove = pickAIMove(e);
 
-        boolean playerFirst = (p.currentSpeed > e.currentSpeed)
-            || (p.currentSpeed == e.currentSpeed && RNG.nextBoolean());
+        int pPri = movePriority(playerMove);
+        int ePri = movePriority(enemyMove);
+        boolean playerFirst;
+        if (pPri != ePri) {
+            playerFirst = pPri > ePri;
+        } else {
+            playerFirst = (p.currentSpeed > e.currentSpeed)
+                || (p.currentSpeed == e.currentSpeed && RNG.nextBoolean());
+        }
 
         if (playerFirst) {
             doPlayerAttack(playerMove);

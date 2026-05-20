@@ -118,6 +118,23 @@ public class Moves {
         } else {
             pickFromType(result, type1, level, 3, learnset);
         }
+        // Safety net: an underleveled spawn of a species whose entire learnset is
+        // above its current level (e.g., a Lv-5 Klink whose earliest legal move is
+        // Lv 15) would otherwise end up with zero moves. Top up with the lowest-
+        // minLevel learnset moves regardless of level so the encounter is never
+        // a complete no-op.
+        if (result.isEmpty() && learnset != null && !learnset.isEmpty()) {
+            List<Move> safetyPool = new ArrayList<>();
+            for (String name : learnset) {
+                Move m = findByName(name);
+                if (m != null) safetyPool.add(m);
+            }
+            safetyPool.sort((a, b) -> a.minLevel - b.minLevel);
+            for (int i = 0; i < Math.min(2, safetyPool.size()); i++) {
+                result.add(safetyPool.get(i));
+            }
+        }
+
         // De-dupe: a Normal-type pokemon may roll the same move via the type-picker;
         // keep slot 0's pick and drop later duplicates.
         java.util.LinkedHashMap<String, Move> uniq = new java.util.LinkedHashMap<>();
