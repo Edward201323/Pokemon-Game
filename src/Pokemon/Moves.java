@@ -15,8 +15,35 @@ import java.util.Random;
 // qualifies for, and guarantee a physical+special split so loadouts feel balanced.
 public class Moves {
     private static final String CSV_PATH = "./src/res/movesData/moves.csv";
+    private static final String LEARNSET_CSV_PATH = "./src/res/PokemonData/learnsets.csv";
     private static final Random RNG = new Random();
     private static final Map<String, List<Move>> BY_TYPE = load();
+
+    // Per-species whitelist of move names the species can learn (mainline level-up + TM
+    // through Gen 7, filtered to moves that exist in our 150-move catalog). If a species
+    // isn't listed (or has an empty set), getMoves falls back to the type-based picker so
+    // every pokemon still ends up with a sensible loadout.
+    private static final Map<String, java.util.Set<String>> LEARNSET = loadLearnset();
+
+    private static Map<String, java.util.Set<String>> loadLearnset() {
+        Map<String, java.util.Set<String>> map = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(LEARNSET_CSV_PATH))) {
+            reader.readLine(); // header: pokemon,move
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty()) continue;
+                int comma = line.indexOf(',');
+                if (comma < 0) continue;
+                String poke = line.substring(0, comma).trim();
+                String move = line.substring(comma + 1).trim();
+                if (poke.isEmpty() || move.isEmpty()) continue;
+                map.computeIfAbsent(poke, k -> new java.util.HashSet<>()).add(move);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return map;
+    }
 
     private static Map<String, List<Move>> load() {
         Map<String, List<Move>> map = new HashMap<>();
@@ -48,9 +75,12 @@ public class Moves {
         return Integer.parseInt(s);
     }
 
-    // Back-compat wrapper for callers that don't have a level handy. Treat them as mid-tier.
+    // Back-compat wrappers for callers that don't have species or level handy.
     public static List<Move> getMoves(String type1, String type2) {
-        return getMoves(type1, type2, 50);
+        return getMoves(null, type1, type2, 50);
+    }
+    public static List<Move> getMoves(String type1, String type2, int level) {
+        return getMoves(null, type1, type2, level);
     }
 
     // Hyper Beam is excluded from the universal Normal slot and from the Move Tutor —
@@ -60,20 +90,33 @@ public class Moves {
     // Returns up to 4 moves tailored to the pokemon's level + types. Slot 0 is the
     // strongest qualifying Normal move (except Hyper Beam) — guarantees every pokemon
     // has a fallback against immune defenders (e.g., Electric vs Ground). The remaining
-    // slots are filled by the type-tiered picker: mono-type fills 3 from type1, dual-type
-    // fills 2 from type1 + 1 from type2.
-    public static List<Move> getMoves(String type1, String type2, int level) {
+    // slots are filled by the type-tiered picker, optionally restricted to the species'
+    // real-game learnset (when `species` is listed in learnsets.csv). If the learnset
+    // filter would empty the type-pool, falls back to the unfiltered type-pool.
+    public static List<Move> getMoves(String species, String type1, String type2, int level) {
         List<Move> result = new ArrayList<>();
-        Move normal = strongestNormalExceptHyperBeam(level);
+        java.util.Set<String> learnset = (species != null) ? LEARNSET.get(species) : null;
+        // Slot 0: strongest Normal (except Hyper Beam) the species can learn. When the
+        // species has a learnset, respect it strictly — if no Normal move is in the
+        // learnset, slot 0 stays empty (the user explicitly stripped Normal moves from
+        // non-Normal species). Only species without any learnset entry get the universal
+        // fallback so they still receive a Normal coverage move.
+        Move normal;
+        if (learnset != null) {
+            normal = strongestNormalExceptHyperBeam(level, learnset);
+        } else {
+            normal = strongestNormalExceptHyperBeam(level, null);
+        }
         if (normal != null) result.add(normal);
+
         boolean dualType = type2 != null
                 && !type2.equalsIgnoreCase("none")
                 && !type2.equalsIgnoreCase(type1);
         if (dualType) {
-            pickFromType(result, type1, level, 2);
-            pickFromType(result, type2, level, 1);
+            pickFromType(result, type1, level, 2, learnset);
+            pickFromType(result, type2, level, 1, learnset);
         } else {
-            pickFromType(result, type1, level, 3);
+            pickFromType(result, type1, level, 3, learnset);
         }
         // De-dupe: a Normal-type pokemon may roll the same move via the type-picker;
         // keep slot 0's pick and drop later duplicates.
@@ -83,15 +126,16 @@ public class Moves {
     }
 
     // Highest-power Normal move the pokemon qualifies for, excluding Hyper Beam. Ties
-    // broken by minLevel (newer move wins). Returns null only if no Normal move at all
-    // qualifies — shouldn't happen in practice since Tackle is Lv 1.
-    private static Move strongestNormalExceptHyperBeam(int level) {
+    // broken by minLevel (newer move wins). If `learnset` is non-null, restricts to
+    // moves the species actually learns. Returns null if no Normal move qualifies.
+    private static Move strongestNormalExceptHyperBeam(int level, java.util.Set<String> learnset) {
         List<Move> pool = BY_TYPE.get("normal");
         if (pool == null) return null;
         Move best = null;
         for (Move m : pool) {
             if (m.name.equalsIgnoreCase(HYPER_BEAM)) continue;
             if (m.minLevel > level) continue;
+            if (learnset != null && !learnset.contains(m.name)) continue;
             if (best == null
                     || m.basePower > best.basePower
                     || (m.basePower == best.basePower && m.minLevel > best.minLevel)) {
@@ -103,15 +147,27 @@ public class Moves {
 
     // Pick `count` moves from one type, split between physical and special (phys takes
     // the extra slot on odd counts). Each half is independently filtered by level then
-    // biased toward the highest-tier moves the pokemon qualifies for.
-    private static void pickFromType(List<Move> out, String type, int level, int count) {
+    // biased toward the highest-tier moves the pokemon qualifies for. If `learnset` is
+    // non-null, the type-pool is first filtered to moves the species can actually learn;
+    // an empty filtered pool falls through to the unrestricted type-pool so species with
+    // sparse learnsets still produce moves.
+    private static void pickFromType(List<Move> out, String type, int level, int count,
+                                     java.util.Set<String> learnset) {
         if (type == null || count <= 0) return;
         List<Move> pool = BY_TYPE.get(type.toLowerCase());
         if (pool == null || pool.isEmpty()) return;
+        List<Move> filtered = pool;
+        if (learnset != null) {
+            List<Move> kept = new ArrayList<>(pool.size());
+            for (Move m : pool) if (learnset.contains(m.name)) kept.add(m);
+            if (!kept.isEmpty()) filtered = kept;
+            // If kept is empty, fall back to the unfiltered pool — better to give a
+            // mistyped move than no move at all.
+        }
         int physCount = (count + 1) / 2;
         int specCount = count - physCount;
         List<Move> phys = new ArrayList<>(), spec = new ArrayList<>();
-        for (Move m : pool) (m.physical ? phys : spec).add(m);
+        for (Move m : filtered) (m.physical ? phys : spec).add(m);
         pickWithTierBias(out, phys, level, physCount);
         pickWithTierBias(out, spec, level, specCount);
     }
@@ -158,15 +214,20 @@ public class Moves {
         if (p == null) return out;
         java.util.Set<String> alreadyKnown = new java.util.HashSet<>();
         if (p.moves != null) for (Move m : p.moves) if (m != null) alreadyKnown.add(m.name);
-        addLearnableForType(out, p.type1, p.level, alreadyKnown);
+        // If the species has a learnset, restrict tutor offerings to it (intersected with
+        // type / level / already-known filters). Species not in learnsets.csv keep the
+        // old "all moves of your type(s) + all Normal" behavior so nothing breaks.
+        java.util.Set<String> learnset = LEARNSET.get(p.name);
+        addLearnableForType(out, p.type1, p.level, alreadyKnown, learnset);
         if (p.type2 != null && !p.type2.equalsIgnoreCase("none")
                 && !p.type2.equalsIgnoreCase(p.type1)) {
-            addLearnableForType(out, p.type2, p.level, alreadyKnown);
+            addLearnableForType(out, p.type2, p.level, alreadyKnown, learnset);
         }
-        // Universal Normal coverage — every pokemon can learn any Normal move via the
-        // tutor (de-duped against the type-based pool above). Hyper Beam is excluded
-        // from tutoring across the board, regardless of pokemon type.
-        addLearnableForType(out, "normal", p.level, alreadyKnown);
+        // Normal coverage in the tutor: species with a learnset get only the Normal
+        // moves they actually learn (matches the strip we applied to non-Normal species).
+        // Species without any learnset entry fall back to universal Normal coverage so
+        // they're not left empty. Hyper Beam is excluded from tutoring across the board.
+        addLearnableForType(out, "normal", p.level, alreadyKnown, learnset);
         out.removeIf(m -> m.name.equalsIgnoreCase(HYPER_BEAM));
         out.sort((a, b) -> {
             int t = a.type.compareTo(b.type);
@@ -176,13 +237,15 @@ public class Moves {
     }
 
     private static void addLearnableForType(List<Move> out, String type, int level,
-                                             java.util.Set<String> alreadyKnown) {
+                                             java.util.Set<String> alreadyKnown,
+                                             java.util.Set<String> learnset) {
         if (type == null) return;
         List<Move> pool = BY_TYPE.get(type.toLowerCase());
         if (pool == null) return;
         for (Move m : pool) {
             if (m.minLevel > level) continue;
             if (alreadyKnown.contains(m.name)) continue;
+            if (learnset != null && !learnset.contains(m.name)) continue;
             out.add(m);
         }
     }

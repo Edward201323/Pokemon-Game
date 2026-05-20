@@ -761,20 +761,7 @@ public class BattleSystem {
 
     private Move pickAIMove(Pokemon enemy) {
         if (enemy.moves == null || enemy.moves.isEmpty()) return null;
-        // Smart AI: skip moves the player is immune to (0x effectiveness) so an Electric
-        // enemy facing a Ground player doesn't keep picking dead Electric moves. Every
-        // pokemon's guaranteed Normal slot means there's almost always a non-immune
-        // option except against a Ghost defender. Falls back to a random pick if every
-        // known move happens to be a no-op.
-        Pokemon defender = player();
-        java.util.List<Move> usable = new java.util.ArrayList<>(enemy.moves.size());
-        for (Move m : enemy.moves) {
-            if (m == null) continue;
-            double eff = TypeChart.effectiveness(m.type, defender.currentType1, defender.currentType2);
-            if (eff > 0) usable.add(m);
-        }
-        if (usable.isEmpty()) return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
-        return usable.get(RNG.nextInt(usable.size()));
+        return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
     }
 
     // ----- catch flow -----
