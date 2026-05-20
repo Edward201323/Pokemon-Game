@@ -492,7 +492,6 @@ public class BattleSystem {
         } else {
             switchHidden = true;
             queue("Come back, " + old.name + "!", () -> {
-                gp.playSE(0); // pokeball recall click
                 switchHidden = false;
                 queue("Go! " + nw.name + "!", () -> {
                     gp.playSE(0); // pokeball open SFX as the new pokemon emerges

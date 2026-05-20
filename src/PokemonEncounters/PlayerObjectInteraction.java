@@ -75,9 +75,27 @@ public class PlayerObjectInteraction {
         changeMusic();
     }
 
+    // Canonical mythical pokemon (Gen 1-6) — a subset of the CSV's is_legendary=YES set.
+    // Encountering one swaps to a distinct theme so they feel rarer than a "regular"
+    // legendary (Mewtwo / Lugia / Kyogre / etc.).
+    private static final java.util.Set<String> MYTHICAL_NAMES = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "Mew", "Celebi", "Jirachi", "Deoxys",
+            "Manaphy", "Darkrai", "Arceus",
+            "Victini", "Keldeo", "Meloetta",
+            "Diancie", "Hoopa (Confined)", "Hoopa (Unbound)", "Volcanion"
+        )
+    );
+
     private void changeMusic() {
         gp.stopMusicResumeLater();
-        if (gp.wildPokemon != null && gp.wildPokemon.isLegendary) {
+        if (gp.wildPokemon == null) {
+            gp.playMusic(RNG.nextDouble() < 0.5 ? 5 : 6);
+            return;
+        }
+        if (MYTHICAL_NAMES.contains(gp.wildPokemon.name)) {
+            gp.playMusic(17); // 17_HauntedGate.wav — mysterious/mythical vibe
+        } else if (gp.wildPokemon.isLegendary) {
             gp.playMusic(20); // 20_Legendary Battle.wav
         } else {
             gp.playMusic(RNG.nextDouble() < 0.5 ? 5 : 6); // WildBattle1 / WildBattle2

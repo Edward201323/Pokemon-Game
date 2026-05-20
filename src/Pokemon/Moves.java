@@ -87,6 +87,23 @@ public class Moves {
     // it's still in the regular pool so Normal-type pokemon can roll it via tier bias.
     private static final String HYPER_BEAM = "Hyper Beam";
 
+    // Signature moves are min-level 1 (so the tutor can teach them right away) but
+    // would otherwise be filtered out by the tier-bias picker on high-level spawns
+    // (top-half-by-minLevel cut). Always force-include any signature move a species
+    // learns so e.g. a wild Kyogre actually shows up with Origin Pulse.
+    private static final java.util.Set<String> SIGNATURE_MOVES = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "Sacred Fire", "Sacred Sword", "Aeroblast", "Psystrike", "Origin Pulse",
+            "Precipice Blades", "Dragon Ascent", "Roar of Time", "Spacial Rend",
+            "Shadow Force", "Judgment", "Magma Storm", "Crush Grip", "V-create",
+            "Blue Flare", "Fusion Flare", "Bolt Strike", "Fusion Bolt",
+            "Glaciate", "Freeze Shock", "Ice Burn", "Secret Sword", "Relic Song",
+            "Mist Ball", "Luster Purge", "Doom Desire", "Psycho Boost",
+            "Oblivion Wing", "Diamond Storm", "Hyperspace Hole", "Hyperspace Fury",
+            "Steam Eruption"
+        )
+    );
+
     // Returns up to 4 moves tailored to the pokemon's level + types. Slot 0 is the
     // strongest qualifying Normal move (except Hyper Beam) — guarantees every pokemon
     // has a fallback against immune defenders (e.g., Electric vs Ground). The remaining
@@ -96,6 +113,15 @@ public class Moves {
     public static List<Move> getMoves(String species, String type1, String type2, int level) {
         List<Move> result = new ArrayList<>();
         java.util.Set<String> learnset = (species != null) ? LEARNSET.get(species) : null;
+        // Force-include any signature moves the species learns — they bypass the tier-bias
+        // picker so a wild Kyogre actually shows up with Origin Pulse, etc.
+        if (learnset != null) {
+            for (String name : learnset) {
+                if (!SIGNATURE_MOVES.contains(name)) continue;
+                Move m = findByName(name);
+                if (m != null && m.minLevel <= level) result.add(m);
+            }
+        }
         // Slot 0: strongest Normal (except Hyper Beam) the species can learn. When the
         // species has a learnset, respect it strictly — if no Normal move is in the
         // learnset, slot 0 stays empty (the user explicitly stripped Normal moves from
@@ -136,10 +162,14 @@ public class Moves {
         }
 
         // De-dupe: a Normal-type pokemon may roll the same move via the type-picker;
-        // keep slot 0's pick and drop later duplicates.
+        // keep the earlier pick (signatures > Normal slot > type picks) and drop later duplicates.
         java.util.LinkedHashMap<String, Move> uniq = new java.util.LinkedHashMap<>();
         for (Move m : result) if (m != null) uniq.putIfAbsent(m.name, m);
-        return new ArrayList<>(uniq.values());
+        // Cap at 4 slots — if signatures already filled the moveset, type picks fall off
+        // the end. Iteration order preserves signature-first priority.
+        List<Move> capped = new ArrayList<>(uniq.values());
+        if (capped.size() > 4) capped = capped.subList(0, 4);
+        return new ArrayList<>(capped);
     }
 
     // Highest-power Normal move the pokemon qualifies for, excluding Hyper Beam. Ties
@@ -245,6 +275,21 @@ public class Moves {
         // Species without any learnset entry fall back to universal Normal coverage so
         // they're not left empty. Hyper Beam is excluded from tutoring across the board.
         addLearnableForType(out, "normal", p.level, alreadyKnown, learnset);
+        // Cross-type learnset moves: TMs like Ice Beam on Suicune (Water type) aren't
+        // in any of the type pools above. Walk the species' learnset and add anything
+        // not already covered, respecting level + already-known filters.
+        if (learnset != null) {
+            java.util.Set<String> alreadyInOut = new java.util.HashSet<>();
+            for (Move m : out) alreadyInOut.add(m.name);
+            for (String moveName : learnset) {
+                if (alreadyKnown.contains(moveName) || alreadyInOut.contains(moveName)) continue;
+                Move m = findByName(moveName);
+                if (m == null) continue;
+                if (m.minLevel > p.level) continue;
+                out.add(m);
+                alreadyInOut.add(moveName);
+            }
+        }
         out.removeIf(m -> m.name.equalsIgnoreCase(HYPER_BEAM));
         out.sort((a, b) -> {
             int t = a.type.compareTo(b.type);

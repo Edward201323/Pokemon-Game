@@ -200,11 +200,14 @@ public class GetPokemon {
     }
 
     // Bucket non-legendary species by their position in an evolution chain.
-    //   stage 0 = base of a multi-stage chain (Charmander, Bulbasaur)
-    //   stage 1 = middle of a multi-stage chain (Charmeleon, Ivysaur)
-    //   stage 2 = final form of a chain *or* a single-stage species (Charizard, Tauros)
+    //   stage 0 = base of a multi-stage chain (Charmander, Bulbasaur) + single-stage species
+    //   stage 1 = middle of a multi-stage chain (Charmeleon, Ivysaur)  + single-stage species
+    //   stage 2 = final form of a chain (Charizard, Venusaur)          + single-stage species
+    // Single-stage species (no evolution, no pre-evolution — Lapras, Aerodactyl, etc.) are
+    // intentionally included in every bucket so they're encounterable at any party level
+    // instead of being locked behind partyMax > 40 alongside fully-evolved mons.
     // A species is "the target of" something else iff some other row's evolves_into points
-    // at it. Walking forward via evolves_into tells us how many evolutions are ahead.
+    // at it.
     private static String[] collectByStage(int targetStage) {
         java.util.Set<String> isEvolutionTarget = new java.util.HashSet<>();
         for (String[] row : CACHE.values()) {
@@ -220,11 +223,13 @@ public class GetPokemon {
             String into = row.length > 22 ? row[22].trim() : "";
             boolean evolvesForward = !into.isEmpty();
             boolean isTarget = isEvolutionTarget.contains(name);
+            boolean singleStage = !evolvesForward && !isTarget;
             int stage;
-            if (evolvesForward && !isTarget)       stage = 0; // base of multi-stage chain
-            else if (evolvesForward &&  isTarget)  stage = 1; // middle of chain
-            else                                   stage = 2; // final form OR single-stage
-            if (stage == targetStage) out.add(name);
+            if (singleStage)                              stage = -1; // include in all buckets
+            else if (evolvesForward && !isTarget)         stage = 0;  // base of multi-stage chain
+            else if (evolvesForward &&  isTarget)         stage = 1;  // middle of chain
+            else                                          stage = 2;  // final form of multi-stage chain
+            if (stage == -1 || stage == targetStage) out.add(name);
         }
         return out.toArray(new String[0]);
     }

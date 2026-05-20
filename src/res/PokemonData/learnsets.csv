@@ -1421,6 +1421,7 @@ Mewtwo,Low Kick
 Mewtwo,Psychic
 Mewtwo,Psycho Cut
 Mewtwo,Psyshock
+Mewtwo,Psystrike
 Mewtwo,Rock Slide
 Mewtwo,Rock Tomb
 Mewtwo,Shadow Ball
@@ -2131,6 +2132,7 @@ Entei,Heat Wave
 Entei,Hyper Beam
 Entei,Iron Head
 Entei,Iron Tail
+Entei,Sacred Fire
 Entei,Solar Beam
 Entei,Stone Edge
 Suicune,Avalanche
@@ -2216,6 +2218,7 @@ Tyranitar,Thunder
 Tyranitar,Thunder Punch
 Tyranitar,Thunderbolt
 Lugia,Aerial Ace
+Lugia,Aeroblast
 Lugia,Air Slash
 Lugia,Ancient Power
 Lugia,Aqua Tail
@@ -2254,6 +2257,7 @@ Hooh,Heat Wave
 Hooh,Hurricane
 Hooh,Hyper Beam
 Hooh,Psychic
+Hooh,Sacred Fire
 Hooh,Shadow Ball
 Hooh,Solar Beam
 Hooh,Thunder
@@ -3185,6 +3189,7 @@ Latias,Future Sight
 Latias,Giga Impact
 Latias,Hyper Beam
 Latias,Ice Beam
+Latias,Mist Ball
 Latias,Outrage
 Latias,Psybeam
 Latias,Psychic
@@ -3211,6 +3216,7 @@ Latios,Future Sight
 Latios,Giga Impact
 Latios,Hyper Beam
 Latios,Ice Beam
+Latios,Luster Purge
 Latios,Outrage
 Latios,Psybeam
 Latios,Psychic
@@ -3235,6 +3241,7 @@ Kyogre,Hyper Beam
 Kyogre,Ice Beam
 Kyogre,Ice Punch
 Kyogre,Icy Wind
+Kyogre,Origin Pulse
 Kyogre,Surf
 Kyogre,Thunder
 Kyogre,Thunderbolt
@@ -3255,6 +3262,7 @@ Groudon,Heat Wave
 Groudon,Hyper Beam
 Groudon,Mud Shot
 Groudon,Outrage
+Groudon,Precipice Blades
 Groudon,Rock Slide
 Groudon,Rock Tomb
 Groudon,Solar Beam
@@ -3268,6 +3276,7 @@ Rayquaza,Brick Break
 Rayquaza,Bulldoze
 Rayquaza,Crunch
 Rayquaza,Draco Meteor
+Rayquaza,Dragon Ascent
 Rayquaza,Dragon Breath
 Rayquaza,Dragon Claw
 Rayquaza,Dragon Pulse
@@ -3294,6 +3303,7 @@ Jirachi,Ancient Power
 Jirachi,Confusion
 Jirachi,Dazzling Gleam
 Jirachi,Dig
+Jirachi,Doom Desire
 Jirachi,Energy Ball
 Jirachi,Fire Punch
 Jirachi,Flash Cannon
@@ -3325,6 +3335,7 @@ Deoxys,Knock Off
 Deoxys,Low Kick
 Deoxys,Night Shade
 Deoxys,Psychic
+Deoxys,Psycho Boost
 Deoxys,Psyshock
 Deoxys,Pursuit
 Deoxys,Rock Slide
@@ -4244,6 +4255,7 @@ Dialga,Iron Tail
 Dialga,Metal Claw
 Dialga,Outrage
 Dialga,Power Gem
+Dialga,Roar of Time
 Dialga,Rock Slide
 Dialga,Rock Tomb
 Dialga,Stone Edge
@@ -4273,6 +4285,7 @@ Palkia,Outrage
 Palkia,Power Gem
 Palkia,Rock Slide
 Palkia,Rock Tomb
+Palkia,Spacial Rend
 Palkia,Stone Edge
 Palkia,Surf
 Palkia,Thunder
@@ -4296,6 +4309,7 @@ Heatran,Heat Wave
 Heatran,Hyper Beam
 Heatran,Iron Head
 Heatran,Iron Tail
+Heatran,Magma Storm
 Heatran,Metal Claw
 Heatran,Mud Slap
 Heatran,Rock Slide
@@ -4307,6 +4321,7 @@ Regigigas,Avalanche
 Regigigas,Body Slam
 Regigigas,Brick Break
 Regigigas,Bulldoze
+Regigigas,Crush Grip
 Regigigas,Earthquake
 Regigigas,Fire Punch
 Regigigas,Giga Impact
@@ -4345,6 +4360,7 @@ Giratina (Altered),Rock Slide
 Giratina (Altered),Rock Tomb
 Giratina (Altered),Shadow Ball
 Giratina (Altered),Shadow Claw
+Giratina (Altered),Shadow Force
 Giratina (Altered),Stone Edge
 Giratina (Altered),Surf
 Giratina (Altered),Thunder
@@ -4372,6 +4388,7 @@ Giratina (Origin),Rock Slide
 Giratina (Origin),Rock Tomb
 Giratina (Origin),Shadow Ball
 Giratina (Origin),Shadow Claw
+Giratina (Origin),Shadow Force
 Giratina (Origin),Stone Edge
 Giratina (Origin),Thunder
 Giratina (Origin),Thunderbolt
@@ -4457,6 +4474,7 @@ Arceus,Hyper Voice
 Arceus,Ice Beam
 Arceus,Iron Head
 Arceus,Iron Tail
+Arceus,Judgment
 Arceus,Knock Off
 Arceus,Mud Slap
 Arceus,Outrage
@@ -4506,6 +4524,7 @@ Victini,Solar Beam
 Victini,Thunder
 Victini,Thunder Punch
 Victini,Thunderbolt
+Victini,V-create
 Victini,Wild Charge
 Victini,Zen Headbutt
 Snivy,Aerial Ace
@@ -5300,6 +5319,7 @@ Cobalion,Metal Claw
 Cobalion,Quick Attack
 Cobalion,Rock Slide
 Cobalion,Rock Tomb
+Cobalion,Sacred Sword
 Cobalion,Steel Beam
 Cobalion,Stone Edge
 Cobalion,X-Scissor
@@ -5316,6 +5336,7 @@ Terrakion,Iron Head
 Terrakion,Quick Attack
 Terrakion,Rock Slide
 Terrakion,Rock Tomb
+Terrakion,Sacred Sword
 Terrakion,Stone Edge
 Terrakion,X-Scissor
 Terrakion,Zen Headbutt
@@ -5331,6 +5352,7 @@ Virizion,Leaf Blade
 Virizion,Quick Attack
 Virizion,Rock Slide
 Virizion,Rock Tomb
+Virizion,Sacred Sword
 Virizion,Solar Beam
 Virizion,Stone Edge
 Virizion,Vine Whip
@@ -5380,6 +5402,7 @@ Thundurus,Thunder Punch
 Thundurus,Thunderbolt
 Thundurus,Wild Charge
 Reshiram,Ancient Power
+Reshiram,Blue Flare
 Reshiram,Bulldoze
 Reshiram,Crunch
 Reshiram,Draco Meteor
@@ -5394,6 +5417,7 @@ Reshiram,Fire Blast
 Reshiram,Flamethrower
 Reshiram,Flare Blitz
 Reshiram,Focus Blast
+Reshiram,Fusion Flare
 Reshiram,Giga Impact
 Reshiram,Hyper Beam
 Reshiram,Iron Tail
@@ -5404,6 +5428,7 @@ Reshiram,Solar Beam
 Reshiram,Stone Edge
 Reshiram,Zen Headbutt
 Zekrom,Ancient Power
+Zekrom,Bolt Strike
 Zekrom,Bulldoze
 Zekrom,Crunch
 Zekrom,Draco Meteor
@@ -5414,6 +5439,7 @@ Zekrom,Dragon Tail
 Zekrom,Earth Power
 Zekrom,Earthquake
 Zekrom,Focus Blast
+Zekrom,Fusion Bolt
 Zekrom,Giga Impact
 Zekrom,Hyper Beam
 Zekrom,Iron Tail
@@ -5456,9 +5482,12 @@ Kyurem,Dragon Tail
 Kyurem,Earth Power
 Kyurem,Earthquake
 Kyurem,Focus Blast
+Kyurem,Freeze Shock
 Kyurem,Giga Impact
+Kyurem,Glaciate
 Kyurem,Hyper Beam
 Kyurem,Ice Beam
+Kyurem,Ice Burn
 Kyurem,Icy Wind
 Kyurem,Iron Tail
 Kyurem,Outrage
@@ -5481,6 +5510,8 @@ Keldeo,Low Kick
 Keldeo,Mud Slap
 Keldeo,Poison Jab
 Keldeo,Quick Attack
+Keldeo,Sacred Sword
+Keldeo,Secret Sword
 Keldeo,Stone Edge
 Keldeo,Surf
 Keldeo,Waterfall
@@ -5503,6 +5534,7 @@ Meloetta,Psybeam
 Meloetta,Psychic
 Meloetta,Psyshock
 Meloetta,Quick Attack
+Meloetta,Relic Song
 Meloetta,Shadow Ball
 Meloetta,Signal Beam
 Meloetta,Solar Beam
@@ -6007,6 +6039,7 @@ Yveltal,Heat Wave
 Yveltal,Hurricane
 Yveltal,Hyper Beam
 Yveltal,Knock Off
+Yveltal,Oblivion Wing
 Yveltal,Phantom Force
 Yveltal,Psychic
 Yveltal,Shadow Ball
@@ -6017,6 +6050,7 @@ Yveltal,Wing Attack
 Diancie,Ancient Power
 Diancie,Bulldoze
 Diancie,Dazzling Gleam
+Diancie,Diamond Storm
 Diancie,Disarming Voice
 Diancie,Earth Power
 Diancie,Earthquake
@@ -6045,6 +6079,7 @@ Hoopa (Confined),Future Sight
 Hoopa (Confined),Giga Impact
 Hoopa (Confined),Gunk Shot
 Hoopa (Confined),Hyper Beam
+Hoopa (Confined),Hyperspace Hole
 Hoopa (Confined),Ice Punch
 Hoopa (Confined),Knock Off
 Hoopa (Confined),Phantom Force
@@ -6070,6 +6105,7 @@ Hoopa (Unbound),Future Sight
 Hoopa (Unbound),Giga Impact
 Hoopa (Unbound),Gunk Shot
 Hoopa (Unbound),Hyper Beam
+Hoopa (Unbound),Hyperspace Fury
 Hoopa (Unbound),Ice Punch
 Hoopa (Unbound),Knock Off
 Hoopa (Unbound),Phantom Force
@@ -6093,6 +6129,7 @@ Volcanion,Heat Wave
 Volcanion,Hydro Pump
 Volcanion,Hyper Beam
 Volcanion,Solar Beam
+Volcanion,Steam Eruption
 Volcanion,Surf
 Volcanion,Tackle
 Volcanion,Water Gun

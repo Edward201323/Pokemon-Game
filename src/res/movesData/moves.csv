@@ -149,3 +149,35 @@ Fairy,Dazzling Gleam,80,100,false,35
 Fairy,Play Rough,90,90,true,50
 Fairy,Spirit Break,75,100,true,30
 Fairy,Moonblast,95,100,false,55
+Fire,Sacred Fire,100,95,false,1
+Fighting,Sacred Sword,90,100,true,1
+Flying,Aeroblast,100,95,false,1
+Psychic,Psystrike,100,100,false,1
+Water,Origin Pulse,110,85,false,1
+Ground,Precipice Blades,120,85,true,1
+Flying,Dragon Ascent,120,100,true,1
+Dragon,Roar of Time,150,90,false,1
+Dragon,Spacial Rend,100,95,false,1
+Ghost,Shadow Force,120,100,true,1
+Normal,Judgment,100,100,false,1
+Fire,Magma Storm,100,75,false,1
+Normal,Crush Grip,121,100,true,1
+Fire,V-create,180,95,true,1
+Fire,Blue Flare,130,85,false,1
+Fire,Fusion Flare,100,100,false,1
+Electric,Bolt Strike,130,85,true,1
+Electric,Fusion Bolt,100,100,true,1
+Ice,Glaciate,65,95,false,1
+Ice,Freeze Shock,140,90,true,1
+Ice,Ice Burn,140,90,false,1
+Fighting,Secret Sword,85,100,false,1
+Normal,Relic Song,75,100,false,1
+Psychic,Mist Ball,95,100,false,1
+Psychic,Luster Purge,95,100,false,1
+Steel,Doom Desire,140,100,false,1
+Psychic,Psycho Boost,140,90,false,1
+Flying,Oblivion Wing,80,100,false,1
+Rock,Diamond Storm,100,95,true,1
+Psychic,Hyperspace Hole,80,Always Hits,false,1
+Dark,Hyperspace Fury,100,Always Hits,true,1
+Water,Steam Eruption,110,95,false,1
