@@ -50,6 +50,10 @@ public class PokemonCenter {
     // PC viewer state.
     private int pcIndex;
     private List<Pokemon> pcCache;
+    // When true, the focused PC entry is showing a release-confirm prompt. Enter confirms,
+    // Esc / arrow nav cancels. Same Shift+D pattern as the title screen's slot delete.
+    private boolean confirmingDelete;
+    private boolean prevDeleteCombo;
 
     // Edge detection so held keys don't auto-fire. Enter is the only confirm key (so Z
     // can't be accidentally pressed instead). ESC is the universal exit.
@@ -187,9 +191,28 @@ public class PokemonCenter {
             if (justConfirm || justEsc || justP) close();
             return;
         }
+        // Shift+D = release the focused pokemon (with confirm). Edge-detected as a combo.
+        boolean deleteCombo = keyH.shiftPressed && keyH.dPressed;
+        boolean justDelete = deleteCombo && !prevDeleteCombo;
+        prevDeleteCombo = deleteCombo;
+
+        if (confirmingDelete) {
+            if (justConfirm) {
+                releasePokemon(pcIndex);
+                confirmingDelete = false;
+            } else if (justEsc || justUp || justDown) {
+                confirmingDelete = false;
+            }
+            return;
+        }
+
         if (justUp)   pcIndex = (pcIndex + pcCache.size() - 1) % pcCache.size();
         if (justDown) pcIndex = (pcIndex + 1) % pcCache.size();
         if (justEsc || justP) { close(); return; }
+        if (justDelete) {
+            confirmingDelete = true;
+            return;
+        }
         if (justConfirm) {
             // Enter/Z on a PC entry: open the party UI to pick which slot to swap with.
             final int pcIdx = pcIndex;
@@ -200,6 +223,24 @@ public class PokemonCenter {
                 partySlot -> { performPcSwap(pcIdx, partySlot); refreshInput(); },
                 this::refreshInput
             );
+        }
+    }
+
+    // Permanently remove the PC entry at pcIdx. Cursor clamps to the new size. Persists
+    // immediately so the release survives a crash / window-close without a manual save
+    // (Shift+S is gated to playState and the PC viewer isn't playState).
+    private void releasePokemon(int pcIdx) {
+        java.util.List<Pokemon> box = gp.playerPokemon.pokemonInPC;
+        if (pcIdx < 0 || pcIdx >= box.size()) return;
+        box.remove(pcIdx);
+        pcCache = new java.util.ArrayList<>(box);
+        if (pcCache.isEmpty()) {
+            pcIndex = 0;
+        } else if (pcIndex >= pcCache.size()) {
+            pcIndex = pcCache.size() - 1;
+        }
+        if (Save.SaveManager.save(gp.currentSaveSlot, gp)) {
+            gp.saveOverlayFrames = 90;
         }
     }
 
@@ -431,7 +472,10 @@ public class PokemonCenter {
         if (smallFont != null) g2.setFont(smallFont);
         g2.setColor(new Color(160, 160, 160));
         g2.drawString((pcIndex + 1) + " / " + n, 48, gp.screenHeight - 32);
-        g2.drawString("ESC to exit  -  Enter to swap", 48, gp.screenHeight - 60);
+        String hint = confirmingDelete
+            ? "Enter confirm release   Esc cancel"
+            : "ESC exit   Enter swap   Shift+D release";
+        g2.drawString(hint, 48, gp.screenHeight - 60);
 
         // Right: large sprite of selected pokemon, centered in the right panel.
         Pokemon sel = pcCache.get(pcIndex);
@@ -452,5 +496,12 @@ public class PokemonCenter {
         String headline = sel.name + "   Lv " + sel.level;
         int textW = g2.getFontMetrics().stringWidth(headline);
         g2.drawString(headline, leftPanelW + (gp.screenWidth - leftPanelW - textW) / 2, 56);
+
+        if (confirmingDelete) {
+            String warn = "Release " + sel.name + "?";
+            int ww = g2.getFontMetrics().stringWidth(warn);
+            g2.setColor(new Color(255, 110, 110));
+            g2.drawString(warn, leftPanelW + (gp.screenWidth - leftPanelW - ww) / 2, 100);
+        }
     }
 }

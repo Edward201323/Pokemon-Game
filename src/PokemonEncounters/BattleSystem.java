@@ -59,6 +59,9 @@ public class BattleSystem {
     private final KeyHandler keyH;
 
     private Phase phase = Phase.ENTRY;
+    // Tracks the phase seen on the previous update tick so we can detect transitions
+    // *into* CHOOSE_ACTION and reset the cursor back to FIGHT each turn.
+    private Phase prevPhase = Phase.ENTRY;
 
     // Edge-detection: a key only counts as "just pressed" on the frame it goes
     // from up to down. Without this, holding Z to fight would auto-select move 1.
@@ -258,6 +261,14 @@ public class BattleSystem {
     public void update() {
         sampleEdges();
         easeHpBars();
+
+        // Each fresh turn (transition into CHOOSE_ACTION from anything else) snaps the
+        // action cursor back to FIGHT so the player doesn't accidentally re-pick CATCH/
+        // RUN/POKEMON from the previous turn's cursor position.
+        if (phase == Phase.CHOOSE_ACTION && prevPhase != Phase.CHOOSE_ACTION) {
+            actionCursor = 0;
+        }
+        prevPhase = phase;
 
         if (phase == Phase.ENTRY) {
             // Boss battles open with the boss's send-out beat (ball + "???? sent out X!").
@@ -1079,21 +1090,12 @@ public class BattleSystem {
         int y = gp.screenHeight - panelH - 8;
         int w = gp.screenWidth - margin * 2;
 
-        // Panel background — matches drawDialogPanel.
-        g2.setPaint(new GradientPaint(0, y, new Color(18, 28, 40, 235),
-                                      0, y + panelH, new Color(8, 14, 22, 235)));
-        g2.fillRoundRect(x, y, w, panelH, 22, 22);
-        Stroke prevStroke = g2.getStroke();
-        g2.setStroke(new BasicStroke(2f));
-        g2.setColor(new Color(90, 130, 170, 200));
-        g2.drawRoundRect(x, y, w, panelH, 22, 22);
-        g2.setColor(new Color(140, 180, 220, 70));
-        g2.drawRoundRect(x + 3, y + 3, w - 6, panelH - 6, 18, 18);
+        Stroke prevStroke = drawMenuPanel(g2, x, y, w, panelH);
 
         // Prompt on the left half.
         Pokemon p = player();
         g2.setFont(font);
-        g2.setColor(new Color(245, 250, 255));
+        g2.setColor(new Color(235, 240, 248));
         g2.drawString("What will", x + 32, y + 56);
         g2.drawString(p.name + " do?", x + 32, y + 102);
 
@@ -1112,20 +1114,47 @@ public class BattleSystem {
             int row = i / 2;
             int bx = gridX + col * (cellW + gap);
             int by = gridY + row * (cellH + gap);
-            boolean focused = (i == actionCursor);
-            g2.setColor(new Color(focused ? 70 : 40, focused ? 90 : 60, focused ? 130 : 90, 230));
-            g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
-            g2.setStroke(new BasicStroke(focused ? 3f : 1.5f));
-            g2.setColor(focused ? new Color(255, 220, 60) : new Color(110, 150, 190, 230));
-            g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
+            drawMenuCell(g2, bx, by, cellW, cellH, i == actionCursor, true);
             String label = labels[i];
             int textW = g2.getFontMetrics().stringWidth(label);
-            int tx = bx + (cellW - textW) / 2;
-            int ty = by + cellH / 2 + 10;
-            g2.setColor(Color.white);
-            g2.drawString(label, tx, ty);
+            g2.setColor(new Color(235, 240, 248));
+            g2.drawString(label, bx + (cellW - textW) / 2, by + cellH / 2 + 10);
         }
         g2.setStroke(prevStroke);
+    }
+
+    // Shared panel + cell styling so the action and move menus stay visually consistent.
+    private static Stroke drawMenuPanel(Graphics2D g2, int x, int y, int w, int h) {
+        g2.setPaint(new GradientPaint(0, y, new Color(20, 28, 38, 240),
+                                      0, y + h, new Color(10, 14, 20, 240)));
+        g2.fillRoundRect(x, y, w, h, 20, 20);
+        Stroke prev = g2.getStroke();
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.setColor(new Color(70, 95, 125, 180));
+        g2.drawRoundRect(x, y, w, h, 20, 20);
+        return prev;
+    }
+
+    // Single cell with a focus state: brighter fill + thin left-edge accent strip.
+    // No saturated borders, no stroke-width swaps — focus is a fill shift only.
+    private static void drawMenuCell(Graphics2D g2, int bx, int by, int cw, int ch,
+                                     boolean focused, boolean enabled) {
+        int baseR = enabled ? 36 : 30, baseG = enabled ? 50 : 42, baseB = enabled ? 72 : 56;
+        int focR  = 60,                 focG  = 82,                 focB  = 118;
+        int fillR = focused ? focR : baseR;
+        int fillG = focused ? focG : baseG;
+        int fillB = focused ? focB : baseB;
+        g2.setColor(new Color(fillR, fillG, fillB, enabled ? 235 : 160));
+        g2.fillRoundRect(bx, by, cw, ch, 12, 12);
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.setColor(new Color(80, 110, 145, enabled ? 200 : 140));
+        g2.drawRoundRect(bx, by, cw, ch, 12, 12);
+        if (focused) {
+            // Soft cream accent strip on the left edge — reads as a cursor without
+            // shouting the whole border.
+            g2.setColor(new Color(235, 215, 160));
+            g2.fillRoundRect(bx + 4, by + 6, 3, ch - 12, 2, 2);
+        }
     }
 
     // Custom move menu: dark panel, 2x2 grid of move buttons, "ESC to go back" hint.
@@ -1136,27 +1165,19 @@ public class BattleSystem {
         int y = gp.screenHeight - panelH - 8;
         int w = gp.screenWidth - margin * 2;
 
-        // Panel background — same style as action/dialog panels.
-        g2.setPaint(new GradientPaint(0, y, new Color(18, 28, 40, 235),
-                                      0, y + panelH, new Color(8, 14, 22, 235)));
-        g2.fillRoundRect(x, y, w, panelH, 22, 22);
-        Stroke prevStroke = g2.getStroke();
-        g2.setStroke(new BasicStroke(2f));
-        g2.setColor(new Color(90, 130, 170, 200));
-        g2.drawRoundRect(x, y, w, panelH, 22, 22);
-        g2.setColor(new Color(140, 180, 220, 70));
-        g2.drawRoundRect(x + 3, y + 3, w - 6, panelH - 6, 18, 18);
+        Stroke prevStroke = drawMenuPanel(g2, x, y, w, panelH);
 
         // 2x2 grid of move buttons across the panel (leave a small strip for the back hint).
         java.util.List<Move> moves = player().moves;
         int gridX = x + 24;
-        int gridY = y + 18;
+        int gridY = y + 16;
         int gridW = w - 48;
-        int gridH = panelH - 50; // reserve ~32px for hint strip
-        int gap = 10;
+        int gridH = panelH - 48; // reserve ~32px for hint strip
+        int gap = 12;
         int cellW = (gridW - gap) / 2;
         int cellH = (gridH - gap) / 2;
-        g2.setFont(font);
+        Font nameFont = font;
+        Font metaFont = font != null ? font.deriveFont(font.getSize2D() - 6f) : null;
         for (int i = 0; i < 4; i++) {
             int col = i % 2;
             int row = i / 2;
@@ -1164,25 +1185,34 @@ public class BattleSystem {
             int by = gridY + row * (cellH + gap);
             boolean has = moves != null && i < moves.size() && moves.get(i) != null;
             boolean focused = (i == moveCursor) && has;
-            g2.setColor(new Color(focused ? 70 : 40, focused ? 90 : 60, focused ? 130 : 90,
-                                  has ? 230 : 130));
-            g2.fillRoundRect(bx, by, cellW, cellH, 14, 14);
-            g2.setStroke(new BasicStroke(focused ? 3f : 1.5f));
-            g2.setColor(focused ? new Color(255, 220, 60)
-                                : new Color(110, 150, 190, has ? 230 : 140));
-            g2.drawRoundRect(bx, by, cellW, cellH, 14, 14);
-            String label = has ? moves.get(i).name : "—";
-            int textW = g2.getFontMetrics().stringWidth(label);
-            int tx = bx + (cellW - textW) / 2;
-            int ty = by + cellH / 2 + 10;
-            g2.setColor(has ? Color.white : new Color(160, 170, 180));
-            g2.drawString(label, tx, ty);
+            drawMenuCell(g2, bx, by, cellW, cellH, focused, has);
+            if (!has) {
+                if (nameFont != null) g2.setFont(nameFont);
+                String dash = "—";
+                int dashW = g2.getFontMetrics().stringWidth(dash);
+                g2.setColor(new Color(140, 150, 165));
+                g2.drawString(dash, bx + (cellW - dashW) / 2, by + cellH / 2 + 10);
+                continue;
+            }
+            // Name on top line, "Pwr · Phys/Spec" on the bottom line in a smaller font.
+            Move m = moves.get(i);
+            if (nameFont != null) g2.setFont(nameFont);
+            String name = m.name;
+            int nameW = g2.getFontMetrics().stringWidth(name);
+            g2.setColor(new Color(245, 248, 252));
+            g2.drawString(name, bx + (cellW - nameW) / 2, by + cellH / 2 - 2);
+            if (metaFont != null) g2.setFont(metaFont);
+            String meta = "Pwr " + m.basePower + "  ·  " + (m.physical ? "Phys" : "Spec");
+            int metaW = g2.getFontMetrics().stringWidth(meta);
+            g2.setColor(new Color(165, 185, 210));
+            g2.drawString(meta, bx + (cellW - metaW) / 2, by + cellH / 2 + 22);
         }
         // Hint strip
-        g2.setColor(new Color(180, 195, 210));
+        if (metaFont != null) g2.setFont(metaFont);
+        g2.setColor(new Color(140, 160, 185));
         String hint = "Arrows navigate   Enter select   ESC back";
         int hintW = g2.getFontMetrics().stringWidth(hint);
-        g2.drawString(hint, x + w - hintW - 24, y + panelH - 14);
+        g2.drawString(hint, x + w - hintW - 22, y + panelH - 12);
         g2.setStroke(prevStroke);
     }
 

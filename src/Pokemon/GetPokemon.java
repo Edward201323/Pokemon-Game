@@ -55,6 +55,23 @@ public class GetPokemon {
         return v == null ? 1 : v;
     }
 
+    // Pseudo-legendaries + their pre-evolutions. The whole chain spawns at 0.75x weight
+    // vs every other species in the same eligible pool, so they're 1/4 less common.
+    // Pre-evos included because filtering only the final form would still make the line
+    // ubiquitous at low levels (e.g., Dratini everywhere on Route 1).
+    private static final java.util.Set<String> PSEUDO_LEGENDARIES = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "Dratini", "Dragonair", "Dragonite",
+            "Larvitar", "Pupitar", "Tyranitar",
+            "Bagon", "Shelgon", "Salamence",
+            "Beldum", "Metang", "Metagross",
+            "Gible", "Gabite", "Garchomp",
+            "Deino", "Zweilous", "Hydreigon",
+            "Goomy", "Sliggoo", "Goodra"
+        )
+    );
+    private static final double PSEUDO_WEIGHT = 0.75;
+
     private static Map<String, String[]> loadAll() {
         Map<String, String[]> map = new HashMap<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(CSV_PATH))) {
@@ -150,7 +167,18 @@ public class GetPokemon {
             if (minSpawnLevel(n) <= encounterLevel) eligible.add(n);
         }
         if (eligible.isEmpty()) return null;
-        return eligible.get(RNG.nextInt(eligible.size()));
+        // Weighted pick: pseudo-legendaries (and their pre-evolutions) get PSEUDO_WEIGHT
+        // (0.75) versus every other eligible species at weight 1.0, so the whole pseudo
+        // line shows up ~1/4 less often than a typical wild.
+        double total = 0;
+        for (String n : eligible) total += PSEUDO_LEGENDARIES.contains(n) ? PSEUDO_WEIGHT : 1.0;
+        double roll = RNG.nextDouble() * total;
+        double running = 0;
+        for (String n : eligible) {
+            running += PSEUDO_LEGENDARIES.contains(n) ? PSEUDO_WEIGHT : 1.0;
+            if (roll < running) return n;
+        }
+        return eligible.get(eligible.size() - 1); // floating-point safety net
     }
 
     private static String[] bucketForPartyMax(int partyMax) {
