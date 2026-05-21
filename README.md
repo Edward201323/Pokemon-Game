@@ -16,23 +16,6 @@
 
 ---
 
-## Game overview
-
-- **Genre:** 2D top-down monster-collector RPG.
-- **Premise:** You wake up in Mitis Town, pick a starter from any of the first
-  six generations, and walk north through Route 1 / Route 2-3. Wild pokemon
-  ambush you from the grass. In the top-right of the map, a mysterious trainer
-  named `????` is waiting with a six-pokemon team of level-100 legendaries.
-- **Core loop:** rustle grass → catch / KO wild pokemon → grind exp →
-  level up → heal at the Pokemon Center → swap moves at the Move Tutor →
-  fight stronger spawns → eventually beat `????` → cap your collection by
-  catching everything on the way.
-- **Target audience:** Pokemon fans who want a small offline sandbox of the
-  classic mechanics, plus Java/Swing learners who want a single mid-size 2D
-  game to read end-to-end.
-
----
-
 ## Features
 
 ### Mechanics
