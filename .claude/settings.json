@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/Users/edwardsong/Projects/Archive/Pokemon Game\" && rm -rf /tmp/pokemon-build && find src -name \"*.java\" -print0 | xargs -0 javac -d /tmp/pokemon-build 2>&1 | head -30)",
+      "Bash(git -C \"/Users/edwardsong/Projects/Archive/Pokemon Game\" log --oneline -5 src/Main/Sound.java)",
+      "Bash(javac -d bin -sourcepath src src/PokemonEncounters/BattleSystem.java src/PokemonEncounters/PokemonEncounter.java)",
+      "Bash(javac -d bin -sourcepath src src/PokemonEncounters/BattleSystem.java)",
+      "Bash(javac -d bin -sourcepath src src/Pokemon/Pokemon.java src/Pokemon/GetPokemon.java src/PokemonEncounters/PlayerObjectInteraction.java)",
+      "Bash(awk -F, 'NR>1 && $22==\"YES\" {print $1}' src/res/PokemonData/PokemonStats.csv)",
+      "Bash(javac -d bin -sourcepath src src/PokemonEncounters/PlayerObjectInteraction.java)",
+      "Bash(python3 -c \"from PIL import Image; im = Image.open\\('src/res/PlayerInventoryAssets/1_PokemonEquipped.png'\\); print\\(im.size\\)\")",
+      "Bash(sips -g pixelWidth -g pixelHeight src/res/PlayerInventoryAssets/1_PokemonEquipped.png)",
+      "Bash(javac -d bin -sourcepath src src/PlayerInventory/OpenPlayerInventory.java src/PlayerInventory/PlayerPokemon.java)",
+      "Bash(python3)",
+      "Bash(javac -d bin -sourcepath src src/PlayerInventory/OpenPlayerInventory.java)",
+      "Bash(awk '{for\\(i=1;i<=NF;i++\\) if\\($i==193\\) c++} END{print c}' src/res/maps/Route1.txt)",
+      "Bash(python3 -c ' *)",
+      "Bash(java -cp bin tests.MoveSwapTest)",
+      "Bash(grep -q ^__TRACKED_VAR__, src/res/PokemonData/PokemonStats.csv)",
+      "Bash(rm -f /tmp/StageCheck.java /tmp/StageCheck.class)",
+      "Bash(awk -F',' 'NR>1 { print $3 \",\" $6 \",\" $2 }' \"/Users/edwardsong/Projects/Archive/Pokemon Game/src/res/movesData/moves.csv\")",
+      "Bash(sort -t',' -k1 -n -r)",
+      "Bash(awk -F',' 'NR>1 && $3+0 >= 90 && $6+0 < 50 { print $0 }' \"/Users/edwardsong/Projects/Archive/Pokemon Game/src/res/movesData/moves.csv\")",
+      "Bash(awk -F',' 'NR>1 { name=$1; into=$23; lvl=$24; gsub\\(/[ \\\\t]/,\"\",into\\); gsub\\(/[ \\\\t]/,\"\",lvl\\); if \\(into != \"\" && \\(lvl == \"0\" || lvl == \"\"\\)\\) print name \" -> \" into \"  \\(level=\" lvl \"\\)\" }' src/res/PokemonData/PokemonStats.csv)",
+      "Bash(awk -F',' '{print $1 \"  evolves_into=\"$23 \"  evolve_level=\"$24}')",
+      "Bash(awk -F',' 'NR>1 { name=$1; into=$23; lvl=$24; gsub\\(/^[ \\\\t]+|[ \\\\t]+$/,\"\",into\\); if \\(into == \"\"\\) print name }' src/res/PokemonData/PokemonStats.csv)",
+      "Bash(cp src/res/PokemonData/PokemonStats.csv src/res/PokemonData/PokemonStats.csv.bak)",
+      "Bash(cat)",
+      "Bash(bash /tmp/apply_evos.sh)",
+      "Bash(rm /tmp/apply_evos.sh)",
+      "Bash(awk -F',' 'NR>1 {print $2}' src/res/movesData/moves.csv)",
+      "Bash(git -C \"/Users/edwardsong/Projects/Archive/Pokemon Game\" rm --cached saves/slot_2.sav)",
+      "Bash(git -C \"/Users/edwardsong/Projects/Archive/Pokemon Game\" status --short)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp/pokemon-build",
+      "/private/tmp"
+    ]
+  }
+}

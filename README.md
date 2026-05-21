@@ -6,13 +6,13 @@
 |---|---|
 | ![Title](docs/title.png) | ![Starter](docs/starter.png) |
 
-| Overworld | Wild encounter |
+| Overworld | Battle |
 |---|---|
-| ![Overworld](docs/overworld.png) | ![Encounter](docs/encounter.png) |
+| ![Overworld](docs/overworld.png) | ![Battle](docs/battle.png) |
 
-| PC viewer |
-|---|
-| ![PC](docs/pc.png) |
+| Pokemon inventory | PC viewer |
+|---|---|
+| ![Inventory](docs/pokemon_invertory.png) | ![PC](docs/pc.png) |
 
 ---
 
