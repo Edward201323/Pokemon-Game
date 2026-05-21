@@ -802,6 +802,23 @@ public class BattleSystem {
 
     private Move pickAIMove(Pokemon enemy) {
         if (enemy.moves == null || enemy.moves.isEmpty()) return null;
+        // Boss AI is type-aware: avoid moves the player resists or is immune to. Within
+        // the "neutral or better" pool the pick is still random, so the same boss mon
+        // doesn't lock onto its single strongest super-effective move every turn — there
+        // should still be flavor / variety. Wild AI stays uniform random.
+        if (gp.isBossBattle) {
+            Pokemon defender = player();
+            java.util.List<Move> neutralOrBetter = new java.util.ArrayList<>(enemy.moves.size());
+            for (Move m : enemy.moves) {
+                if (m == null) continue;
+                double eff = TypeChart.effectiveness(m.type, defender.currentType1, defender.currentType2);
+                if (eff >= 1.0) neutralOrBetter.add(m);
+            }
+            if (!neutralOrBetter.isEmpty()) {
+                return neutralOrBetter.get(RNG.nextInt(neutralOrBetter.size()));
+            }
+            // Every move is resisted or immune — pick at random rather than no-op.
+        }
         return enemy.moves.get(RNG.nextInt(enemy.moves.size()));
     }
 

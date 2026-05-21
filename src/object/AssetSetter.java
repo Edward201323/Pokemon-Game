@@ -20,12 +20,10 @@ public class AssetSetter {
         gp.obj.get(gp.obj.size()-1).worldX = 10 * gp.tileSize;
         gp.obj.get(gp.obj.size()-1).worldY = 10 * gp.tileSize;
 
-        // Trainer boss "????" in the top-right walkable strip. End-game roster: seven
-        // legendaries at level 100 with hand-picked movesets. Reshiram uses its
-        // auto-generated picker (signatures + type moves) since no override was specified.
-        // Movesets shorter than 4 leave the remaining slots empty.
+        // Trainer boss "????" in the top-right walkable strip. End-game roster: six
+        // legendaries at level 100 with hand-picked movesets. Movesets shorter than 4
+        // leave the remaining slots empty.
         java.util.List<OBJ_Boss.Member> bossTeam = new java.util.ArrayList<>();
-        bossTeam.add(new OBJ_Boss.Member("Reshiram", 100));
         bossTeam.add(new OBJ_Boss.Member("Darkrai", 100,
             new String[] { "Dark Pulse", "Shadow Ball", "Ice Beam", "Thunderbolt" }));
         bossTeam.add(new OBJ_Boss.Member("Groudon", 100,
