@@ -124,7 +124,7 @@ public class TitleScreen {
         // Title
         if (titleFont != null) g2.setFont(titleFont);
         g2.setColor(Color.white);
-        String title = "POKEMON GAME";
+        String title = "POKEMON BRONZE BRICK";
         int titleW = g2.getFontMetrics().stringWidth(title);
         g2.drawString(title, (gp.screenWidth - titleW) / 2, 130);
 

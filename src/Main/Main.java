@@ -6,7 +6,7 @@ class Main {
         JFrame window = new JFrame();
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         window.setResizable(false);
-        window.setTitle("Pokemon Game");
+        window.setTitle("Pokemon Bronze Brick");
 
         GamePanel gamePanel = new GamePanel();
         window.add(gamePanel);
