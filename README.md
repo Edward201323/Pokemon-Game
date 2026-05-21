@@ -135,20 +135,6 @@
 | Confirm dialog | `Enter` (or `Z` in dialog boxes) |
 | Name entry | Just type, `Backspace` to fix, `Enter` to confirm |
 
-### Tips
-
-- **Wild levels scale to your strongest party member**, so a stronger lead
-  means stronger wilds. Stash overlevelled mons in the PC if you want easier
-  spawns for catching.
-- **Walking onto a tile adjacent to tile `193`** (Pokemon Center) auto-opens
-  the heal menu. Adjacency to tile `173` opens the Move Tutor.
-- **Saving mid-encounter is disabled** on purpose. Run to the overworld first.
-- **Boss battles disable CATCH and RUN.** Bring revives... oh, wait. Bring
-  numbers — switching takes a turn but the enemy can't catch you off-guard.
-- **Saves are plain text.** Open `saves/slot_1.sav` in any editor if you want
-  to peek (or hand-edit a level back to where it was when you mistakenly
-  poured Rare Candies into your Magikarp).
-
 ---
 
 ## License
