@@ -1,18 +1,5 @@
 # Pokemon Bronze Brick
 
-![Java](https://img.shields.io/badge/Java-Swing-orange?logo=java)
-![Build](https://img.shields.io/badge/build-javac-blue)
-![Status](https://img.shields.io/badge/status-archive-lightgrey)
-![Platform](https://img.shields.io/badge/platform-cross--platform-success)
-![License](https://img.shields.io/badge/license-personal--learning-yellow)
-
-> A from-scratch, single-region Pokemon tribute written in pure Java + Swing.
-> Walk through tall grass, throw a pokeball at the wild Lugia that just showed
-> up, blow your last revive on the trainer with no name, and try to remember
-> why you're playing this instead of the actual Pokemon games.
-
----
-
 ## Screenshots
 
 | Title screen | Starter selection |
